@@ -1,65 +1,17 @@
---[[
-	NgotStudio UI Library (thuần UI, không kèm code game)
-	Author gốc: Nguyễn Minh Nhật | Apple Hub
-	Đã tích hợp sẵn:
-		- Đầy đủ element: Section, Button, Toggle, Slider, Input, Dropdown,
-		  Paragraph, Code, Dialog, Notify
-		- Tab:InfoNguyenNhat({Avatar, Name, Badges, Bio})
-		  -> object có :AddSocialIcon(icon, copyValue, order)
-		- Tab:Discord({Avatar, Name, Desc, InviteLink, InviteCode})
-		- Window:SelectTab(index) - chọn tab theo số thứ tự (giống Fluent)
-		- Resize handle ẩn ở góc dưới phải cửa sổ (kéo đổi kích thước ngang/dọc)
-		- Tiêu đề cửa sổ căn trái, AutoSave config theo Tab/Element Title
-
-	CÁCH DÙNG:
-		local LIB = loadstring(readfile("NgotStudio_UI_Lib.lua"))()
-		-- hoặc paste trực tiếp nội dung file này vào đầu script rồi dùng biến LIB
-
-		local Window = LIB:CreateWindow({
-			Title        = "My Hub",
-			Author       = "v1.0",
-			Icon         = "rbxassetid://0",
-			Size         = UDim2.fromOffset(580, 420),
-			ToggleKey    = Enum.KeyCode.LeftControl,
-			FileSaveName = "MyHub_Config.json",
-			AutoSave     = true,
-		})
-
-		local Tab = Window:Tab({ Title = "Home", Icon = "house" })
-
-		local info = Tab:InfoNguyenNhat({
-			Avatar = "rbxassetid://0",
-			Name   = "Your Name",
-			Badges = {"Owner"},
-			Bio    = "Bio here",
-		})
-		info.AddSocialIcon("rbxassetid://121947318640922", "discord.gg/xxxxx", 1)
-
-		Tab:Discord({
-			Avatar     = "rbxassetid://0",
-			Name       = "My Community",
-			Desc       = "Join for updates",
-			InviteLink = "discord.gg/xxxxx",
-			InviteCode = "xxxxx",
-		})
-
-		Window:SelectTab(1) -- chọn tab đầu tiên khi vừa mở
-]]
-
 local LIB = (function()
 --[[
-	_   _       _   _    _ _____ 
-	| \ | |     | | | |  | |_   _|
-	|  \| | __ _| |_| |  | | | |  
-	| . ` |/ _` | __| |  | | | |  
-	| |\  | (_| | |_| |__| |_| |_ 
-	|_| \_|\__,_|\__|\____/|_____|
-
+       _   _             _   _    _ _____ 
+      | \ | |           | | | |  | |_   _|
+ __  _|  \| | __ _  ___ | |_| |  | | | |  
+ \ \/ / . ` |/ _` |/ _ \| __| |  | | | |  
+  >  <| |\  | (_| | (_) | |_| |__| |_| |_ 
+ /_/\_\_| \_|\__, |\___/ \__|\____/|_____|
+              __/ |                       
+             |___/                        
     Rewrited from Wind UI (Footagesus)
     Github: https://github.com/Footagesus/WindUI
 
-	Developed by: .chill.z. (Chillz)
-	Owned by: ardyxz (NgotStudio)
+	Developed by: Nguyễn Minh Nhật (xNgot Zume)
 
 	This User Interface is open source and for public usage.
 ]]
