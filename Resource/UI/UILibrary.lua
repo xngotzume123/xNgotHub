@@ -3130,6 +3130,9 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				LiveSearchDropdown = data.LiveSearchDropdown == true,
 				AutoSave = data.AutoSave ~= false,
 				FileSaveName = data.FileSaveName or "NgotStudio_Config.json",
+				SettingsUI = data.SettingsUI ~= false,
+				SettingsTitle = tostring(data.SettingsTitle or "Settings Ui"),
+				SettingsIcon = tostring(data.SettingsIcon or "settings"),
 			}
 
 			local CONFIG = {}
@@ -3227,20 +3230,610 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 			table.insert(Windows, newWindow)
 
+			-- =====================================================
+			-- NgotStudio UI/UX Theme Engine + Settings Ui
+			-- =====================================================
+			local Lighting = game:GetService("Lighting")
+			local themeBase = setmetatable({}, { __mode = "k" })
+			local themeDestroyed = false
+			local themeApplyToken = 0
+			local uiSaveToken = 0
+			local settingsControls = {}
+			local settingsBuilding = false
+			local syncSettingsControls = function() end
+
+			local function clampNumber(value, minimum, maximum, fallback)
+				value = tonumber(value)
+				if value == nil then return fallback end
+				return math.clamp(value, minimum, maximum)
+			end
+
+			local function colorToHex(color)
+				if typeof(color) ~= "Color3" then return "#FFFFFF" end
+				return string.format("#%02X%02X%02X",
+					math.floor(color.R * 255 + 0.5),
+					math.floor(color.G * 255 + 0.5),
+					math.floor(color.B * 255 + 0.5)
+				)
+			end
+
+			local function colorFrom(value, fallback)
+				if typeof(value) == "Color3" then return value end
+				if type(value) == "table" then
+					local r = tonumber(value.R or value.r or value[1])
+					local g = tonumber(value.G or value.g or value[2])
+					local b = tonumber(value.B or value.b or value[3])
+					if r and g and b then
+						if math.max(r, g, b) <= 1 then return Color3.new(r, g, b) end
+						return Color3.fromRGB(math.clamp(r, 0, 255), math.clamp(g, 0, 255), math.clamp(b, 0, 255))
+					end
+				end
+				if type(value) == "string" then
+					local hex = value:gsub("#", ""):gsub("0x", "")
+					if #hex == 6 and hex:match("^[%x]+$") then
+						return Color3.fromRGB(
+							tonumber(hex:sub(1, 2), 16),
+							tonumber(hex:sub(3, 4), 16),
+							tonumber(hex:sub(5, 6), 16)
+						)
+					end
+				end
+				return fallback
+			end
+
+			local FONT_MAP = {
+				Gotham = Enum.Font.Gotham,
+				GothamMedium = Enum.Font.GothamMedium,
+				GothamBold = Enum.Font.GothamBold,
+				SourceSans = Enum.Font.SourceSans,
+				SourceSansSemibold = Enum.Font.SourceSansSemibold,
+				Arial = Enum.Font.Arial,
+				Code = Enum.Font.Code,
+				Cartoon = Enum.Font.Cartoon,
+				SciFi = Enum.Font.SciFi,
+			}
+
+			local UI_DEFAULTS = {
+				Preset = "Default",
+				Font = "Gotham",
+				TextScale = 1,
+				UIScale = 1,
+				WindowOpacity = 100,
+				BoxOpacity = 100,
+				BackgroundMode = "Color",
+				BackgroundColor = Color3.fromRGB(37, 40, 47),
+				SurfaceColor = Color3.fromRGB(32, 35, 41),
+				AccentColor = Color3.fromRGB(10, 135, 213),
+				TextColor = Color3.fromRGB(197, 204, 219),
+				MutedTextColor = Color3.fromRGB(150, 155, 165),
+				BackgroundImage = "",
+				BackgroundImageTransparency = 25,
+				BackgroundImageScale = "Crop",
+				Blur = 0,
+				CornerRadius = 10,
+				AnimationSpeed = 1,
+				ReduceMotion = false,
+				LiquidGlassStrength = 55,
+				ShowFloatingButtonText = true,
+			}
+
+			local UI_PRESETS = {
+				Default = {},
+				Midnight = {
+					BackgroundColor = Color3.fromRGB(15, 18, 25), SurfaceColor = Color3.fromRGB(22, 27, 38),
+					AccentColor = Color3.fromRGB(88, 166, 255), TextColor = Color3.fromRGB(232, 237, 247),
+					MutedTextColor = Color3.fromRGB(142, 153, 174), WindowOpacity = 100, BoxOpacity = 96,
+					CornerRadius = 12, Blur = 0, BackgroundMode = "Color",
+				},
+				OLED = {
+					BackgroundColor = Color3.fromRGB(0, 0, 0), SurfaceColor = Color3.fromRGB(10, 10, 12),
+					AccentColor = Color3.fromRGB(0, 170, 255), TextColor = Color3.fromRGB(245, 245, 247),
+					MutedTextColor = Color3.fromRGB(145, 145, 150), WindowOpacity = 100, BoxOpacity = 100,
+					CornerRadius = 10, Blur = 0, BackgroundMode = "Color",
+				},
+				Light = {
+					BackgroundColor = Color3.fromRGB(242, 244, 248), SurfaceColor = Color3.fromRGB(255, 255, 255),
+					AccentColor = Color3.fromRGB(0, 122, 255), TextColor = Color3.fromRGB(28, 30, 34),
+					MutedTextColor = Color3.fromRGB(94, 99, 110), WindowOpacity = 100, BoxOpacity = 96,
+					CornerRadius = 12, Blur = 0, BackgroundMode = "Color",
+				},
+				Ocean = {
+					BackgroundColor = Color3.fromRGB(12, 24, 36), SurfaceColor = Color3.fromRGB(18, 38, 52),
+					AccentColor = Color3.fromRGB(0, 188, 212), TextColor = Color3.fromRGB(224, 247, 250),
+					MutedTextColor = Color3.fromRGB(128, 177, 188), WindowOpacity = 98, BoxOpacity = 92,
+					CornerRadius = 14, Blur = 4, BackgroundMode = "Color",
+				},
+				Violet = {
+					BackgroundColor = Color3.fromRGB(27, 20, 40), SurfaceColor = Color3.fromRGB(39, 29, 58),
+					AccentColor = Color3.fromRGB(168, 85, 247), TextColor = Color3.fromRGB(245, 238, 255),
+					MutedTextColor = Color3.fromRGB(177, 157, 199), WindowOpacity = 98, BoxOpacity = 92,
+					CornerRadius = 14, Blur = 4, BackgroundMode = "Color",
+				},
+				["Liquid Glass"] = {
+					BackgroundColor = Color3.fromRGB(22, 25, 31), SurfaceColor = Color3.fromRGB(47, 53, 63),
+					AccentColor = Color3.fromRGB(0, 122, 255), TextColor = Color3.fromRGB(245, 247, 252),
+					MutedTextColor = Color3.fromRGB(183, 190, 203), WindowOpacity = 72, BoxOpacity = 58,
+					CornerRadius = 18, Blur = 18, BackgroundMode = "Liquid Glass", LiquidGlassStrength = 62,
+				},
+			}
+
+			local function copySettings(source)
+				local result = {}
+				for key, value in pairs(source) do result[key] = value end
+				return result
+			end
+
+			local UISettings = copySettings(UI_DEFAULTS)
+
+			local function serializeUISettings(settings)
+				return {
+					Preset = settings.Preset,
+					Font = settings.Font,
+					TextScale = settings.TextScale,
+					UIScale = settings.UIScale,
+					WindowOpacity = settings.WindowOpacity,
+					BoxOpacity = settings.BoxOpacity,
+					BackgroundMode = settings.BackgroundMode,
+					BackgroundColor = colorToHex(settings.BackgroundColor),
+					SurfaceColor = colorToHex(settings.SurfaceColor),
+					AccentColor = colorToHex(settings.AccentColor),
+					TextColor = colorToHex(settings.TextColor),
+					MutedTextColor = colorToHex(settings.MutedTextColor),
+					BackgroundImage = settings.BackgroundImage,
+					BackgroundImageTransparency = settings.BackgroundImageTransparency,
+					BackgroundImageScale = settings.BackgroundImageScale,
+					Blur = settings.Blur,
+					CornerRadius = settings.CornerRadius,
+					AnimationSpeed = settings.AnimationSpeed,
+					ReduceMotion = settings.ReduceMotion,
+					LiquidGlassStrength = settings.LiquidGlassStrength,
+					ShowFloatingButtonText = settings.ShowFloatingButtonText,
+				}
+			end
+
+			local function mergeUISettings(source)
+				if type(source) ~= "table" then return end
+				if type(source.Preset) == "string" then UISettings.Preset = source.Preset end
+				if type(source.Font) == "string" and FONT_MAP[source.Font] then UISettings.Font = source.Font end
+				UISettings.TextScale = clampNumber(source.TextScale, 0.7, 1.5, UISettings.TextScale)
+				UISettings.UIScale = clampNumber(source.UIScale, 0.65, 1.5, UISettings.UIScale)
+				UISettings.WindowOpacity = clampNumber(source.WindowOpacity, 15, 100, UISettings.WindowOpacity)
+				UISettings.BoxOpacity = clampNumber(source.BoxOpacity, 10, 100, UISettings.BoxOpacity)
+				if type(source.BackgroundMode) == "string" then UISettings.BackgroundMode = source.BackgroundMode end
+				UISettings.BackgroundColor = colorFrom(source.BackgroundColor, UISettings.BackgroundColor)
+				UISettings.SurfaceColor = colorFrom(source.SurfaceColor, UISettings.SurfaceColor)
+				UISettings.AccentColor = colorFrom(source.AccentColor, UISettings.AccentColor)
+				UISettings.TextColor = colorFrom(source.TextColor, UISettings.TextColor)
+				UISettings.MutedTextColor = colorFrom(source.MutedTextColor, UISettings.MutedTextColor)
+				if source.BackgroundImage ~= nil then UISettings.BackgroundImage = tostring(source.BackgroundImage or "") end
+				UISettings.BackgroundImageTransparency = clampNumber(source.BackgroundImageTransparency, 0, 100, UISettings.BackgroundImageTransparency)
+				if type(source.BackgroundImageScale) == "string" then UISettings.BackgroundImageScale = source.BackgroundImageScale end
+				UISettings.Blur = clampNumber(source.Blur, 0, 32, UISettings.Blur)
+				UISettings.CornerRadius = clampNumber(source.CornerRadius, 0, 28, UISettings.CornerRadius)
+				UISettings.AnimationSpeed = clampNumber(source.AnimationSpeed, 0.2, 3, UISettings.AnimationSpeed)
+				if source.ReduceMotion ~= nil then UISettings.ReduceMotion = source.ReduceMotion == true end
+				UISettings.LiquidGlassStrength = clampNumber(source.LiquidGlassStrength, 0, 100, UISettings.LiquidGlassStrength)
+				if source.ShowFloatingButtonText ~= nil then UISettings.ShowFloatingButtonText = source.ShowFloatingButtonText == true end
+			end
+
+			mergeUISettings(CONFIG.__NgotUISettings)
+			if type(CONFIG.__NgotUIProfiles) ~= "table" then CONFIG.__NgotUIProfiles = {} end
+
+			local backgroundLayer = Instance.new("ImageLabel")
+			backgroundLayer.Name = "NgotStudioThemeBackground"
+			backgroundLayer.BackgroundTransparency = 1
+			backgroundLayer.BorderSizePixel = 0
+			backgroundLayer.Size = UDim2.fromScale(1, 1)
+			backgroundLayer.Position = UDim2.fromScale(0, 0)
+			backgroundLayer.Image = ""
+			backgroundLayer.ImageTransparency = 1
+			backgroundLayer.ScaleType = Enum.ScaleType.Crop
+			backgroundLayer.ZIndex = 0
+			backgroundLayer.Parent = newWindow
+			local backgroundCorner = Instance.new("UICorner")
+			backgroundCorner.Name = "NgotStudioThemeBackgroundCorner"
+			backgroundCorner.CornerRadius = UDim.new(0, 10)
+			backgroundCorner.Parent = backgroundLayer
+
+			local liquidGradient = Instance.new("UIGradient")
+			liquidGradient.Name = "NgotStudioThemeLiquidGradient"
+			liquidGradient.Rotation = 135
+
+			local liquidStroke = Instance.new("UIStroke")
+			liquidStroke.Name = "NgotStudioThemeLiquidStroke"
+			liquidStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			liquidStroke.Thickness = 1.2
+			liquidStroke.Transparency = 1
+			liquidStroke.Parent = newWindow
+
+			local liquidBlur = Instance.new("BlurEffect")
+			liquidBlur.Name = "NgotStudioLiquidGlass_" .. tostring(math.random(100000, 999999))
+			liquidBlur.Size = 0
+			liquidBlur.Enabled = false
+			liquidBlur.Parent = Lighting
+
+			local uiScale = newWindow:FindFirstChild("NgotStudioThemeScale") or Instance.new("UIScale")
+			uiScale.Name = "NgotStudioThemeScale"
+			uiScale.Parent = newWindow
+			local floatingScale = newFloatingIcon:FindFirstChild("NgotStudioThemeScale") or Instance.new("UIScale")
+			floatingScale.Name = "NgotStudioThemeScale"
+			floatingScale.Parent = newFloatingIcon
+
+			local BASE_TWEEN = { Global = 0.25, Notification = 0.5, PopupOpen = 0.4, PopupClose = 0.4 }
+
+			local function captureThemeBase(instance)
+				if themeBase[instance] then return themeBase[instance] end
+				local state = {}
+				if instance:IsA("GuiObject") then
+					state.BackgroundColor3 = instance.BackgroundColor3
+					state.BackgroundTransparency = instance.BackgroundTransparency
+				end
+				if instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox") then
+					state.TextColor3 = instance.TextColor3
+					state.TextTransparency = instance.TextTransparency
+					state.Font = instance.Font
+					state.TextSize = instance.TextSize
+				end
+				if instance:IsA("ImageLabel") or instance:IsA("ImageButton") then
+					state.ImageColor3 = instance.ImageColor3
+					state.ImageTransparency = instance.ImageTransparency
+				end
+				if instance:IsA("UIStroke") then
+					state.Color = instance.Color
+					state.Transparency = instance.Transparency
+					state.Thickness = instance.Thickness
+				end
+				if instance:IsA("UICorner") then state.CornerRadius = instance.CornerRadius end
+				themeBase[instance] = state
+				return state
+			end
+
+			local function isAccentColor(color)
+				if typeof(color) ~= "Color3" then return false end
+				local h, s, v = color:ToHSV()
+				return h >= 0.50 and h <= 0.67 and s >= 0.40 and v >= 0.45
+			end
+
+			local function imageScaleType(name)
+				if name == "Fit" then return Enum.ScaleType.Fit end
+				if name == "Stretch" then return Enum.ScaleType.Stretch end
+				if name == "Tile" then return Enum.ScaleType.Tile end
+				return Enum.ScaleType.Crop
+			end
+
+			local function resolveBackgroundImage(value)
+				value = tostring(value or "")
+				if value == "" then return "" end
+				if tonumber(value) then return "rbxassetid://" .. value end
+				return value
+			end
+
+			local function applyThemeToObject(instance)
+				if not instance or not instance.Parent then return end
+				if instance == backgroundLayer or instance == liquidGradient or instance == liquidStroke or instance == uiScale or instance == floatingScale then return end
+				if string.sub(instance.Name, 1, 15) == "NgotStudioTheme" or instance.Name == "NgotStudioColorPreview" then return end
+				local base = captureThemeBase(instance)
+				local lowerName = string.lower(instance.Name or "")
+				local liquid = UISettings.BackgroundMode == "Liquid Glass"
+				local surface = UISettings.SurfaceColor
+				local panelAlpha = 1 - (UISettings.BoxOpacity / 100)
+				if liquid then
+					local strength = UISettings.LiquidGlassStrength / 100
+					panelAlpha = math.max(panelAlpha, 0.22 + 0.38 * strength)
+				end
+
+				if instance:IsA("GuiObject") and instance ~= newWindow then
+					if base.BackgroundTransparency and base.BackgroundTransparency < 0.98 then
+						if string.find(lowerName, "overlay", 1, true) then
+							instance.BackgroundColor3 = base.BackgroundColor3
+							instance.BackgroundTransparency = base.BackgroundTransparency
+						elseif isAccentColor(base.BackgroundColor3) or lowerName == "bar" then
+							instance.BackgroundColor3 = UISettings.AccentColor
+							instance.BackgroundTransparency = math.max(base.BackgroundTransparency, panelAlpha * 0.35)
+						else
+							instance.BackgroundColor3 = surface
+							instance.BackgroundTransparency = math.max(base.BackgroundTransparency, panelAlpha)
+						end
+					end
+				end
+
+				if instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox") then
+					instance.Font = FONT_MAP[UISettings.Font] or Enum.Font.Gotham
+					instance.TextSize = math.max(8, (base.TextSize or instance.TextSize) * UISettings.TextScale)
+					if (base.TextTransparency or 0) >= 0.28 then
+						instance.TextColor3 = UISettings.MutedTextColor
+					else
+						instance.TextColor3 = UISettings.TextColor
+					end
+				end
+
+				if instance:IsA("ImageLabel") or instance:IsA("ImageButton") then
+					if isAccentColor(base.ImageColor3) then
+						instance.ImageColor3 = UISettings.AccentColor
+					elseif base.ImageColor3 and base.ImageColor3.R > 0.45 and base.ImageColor3.G > 0.45 and base.ImageColor3.B > 0.45 then
+						instance.ImageColor3 = UISettings.TextColor
+					end
+				end
+
+				if instance:IsA("UIStroke") then
+					if isAccentColor(base.Color) then
+						instance.Color = UISettings.AccentColor
+					else
+						instance.Color = liquid and Color3.fromRGB(235, 242, 255) or UISettings.MutedTextColor
+					end
+					if liquid then
+						instance.Transparency = math.max(base.Transparency or 0, 0.55)
+					else
+						instance.Transparency = base.Transparency or instance.Transparency
+					end
+				end
+
+				if instance:IsA("UICorner") and base.CornerRadius then
+					if base.CornerRadius.Scale >= 0.4 then
+						instance.CornerRadius = base.CornerRadius
+					else
+						instance.CornerRadius = UDim.new(0, UISettings.CornerRadius)
+					end
+				end
+			end
+
+			local function applyUITheme()
+				if themeDestroyed or not newWindow or not newWindow.Parent then return end
+				local liquid = UISettings.BackgroundMode == "Liquid Glass"
+				local imageMode = UISettings.BackgroundMode == "Image"
+				local rootAlpha = 1 - (UISettings.WindowOpacity / 100)
+				newWindow.BackgroundColor3 = UISettings.BackgroundColor
+				newWindow.BackgroundTransparency = imageMode and 1 or rootAlpha
+				backgroundCorner.CornerRadius = UDim.new(0, UISettings.CornerRadius)
+
+				backgroundLayer.Image = resolveBackgroundImage(UISettings.BackgroundImage)
+				backgroundLayer.ScaleType = imageScaleType(UISettings.BackgroundImageScale)
+				backgroundLayer.ImageTransparency = math.clamp(UISettings.BackgroundImageTransparency / 100, 0, 1)
+				backgroundLayer.Visible = imageMode and backgroundLayer.Image ~= ""
+
+				if liquid then
+					liquidGradient.Color = ColorSequence.new({
+						ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+						ColorSequenceKeypoint.new(0.48, UISettings.SurfaceColor),
+						ColorSequenceKeypoint.new(1, UISettings.AccentColor),
+					})
+					local strength = UISettings.LiquidGlassStrength / 100
+					liquidGradient.Transparency = NumberSequence.new({
+						NumberSequenceKeypoint.new(0, 0.65 + 0.2 * (1 - strength)),
+						NumberSequenceKeypoint.new(0.55, 0.82),
+						NumberSequenceKeypoint.new(1, 0.70),
+					})
+					liquidGradient.Parent = newWindow
+					liquidStroke.Color = Color3.fromRGB(236, 243, 255)
+					liquidStroke.Transparency = math.clamp(0.72 - 0.25 * strength, 0.35, 0.8)
+				else
+					liquidGradient.Parent = nil
+					liquidStroke.Transparency = 1
+				end
+
+				uiScale.Scale = UISettings.UIScale
+				floatingScale.Scale = UISettings.UIScale
+				newFloatingIcon.TextLabel.Visible = UISettings.ShowFloatingButtonText
+
+				local speed = math.max(UISettings.AnimationSpeed, 0.2)
+				if UISettings.ReduceMotion then speed = 100 end
+				TweenConfigs.Global.Duration = math.max(0.01, BASE_TWEEN.Global / speed)
+				TweenConfigs.Notification.Duration = math.max(0.01, BASE_TWEEN.Notification / speed)
+				TweenConfigs.PopupOpen.Duration = math.max(0.01, BASE_TWEEN.PopupOpen / speed)
+				TweenConfigs.PopupClose.Duration = math.max(0.01, BASE_TWEEN.PopupClose / speed)
+
+				for _, descendant in ipairs(newWindow:GetDescendants()) do
+					applyThemeToObject(descendant)
+				end
+				for _, descendant in ipairs(newFloatingIcon:GetDescendants()) do
+					applyThemeToObject(descendant)
+				end
+				applyThemeToObject(newFloatingIcon)
+
+				liquidBlur.Size = UISettings.Blur
+				liquidBlur.Enabled = liquid and UISettings.Blur > 0 and newWindow.Visible
+			end
+
+			local function scheduleThemeApply()
+				themeApplyToken += 1
+				local token = themeApplyToken
+				task.delay(0.03, function()
+					if token == themeApplyToken and not themeDestroyed then applyUITheme() end
+				end)
+			end
+
+			local function storeUISettings(force)
+				CONFIG.__NgotUISettings = serializeUISettings(UISettings)
+				if force then return WRITECONFIG(true) end
+				return SAVECONFIG()
+			end
+
+			-- Manual config saves also include the latest UI/UX state.
+			function Window:SaveConfig()
+				CONFIG.__NgotUISettings = serializeUISettings(UISettings)
+				return WRITECONFIG(true)
+			end
+
+			local function queueUISettingsSave()
+				if settingsBuilding or not Window.AutoSave then return end
+				uiSaveToken += 1
+				local token = uiSaveToken
+				task.delay(0.4, function()
+					if token == uiSaveToken and not themeDestroyed then storeUISettings(false) end
+				end)
+			end
+
+			local function setUISetting(key, value)
+				if not settingsBuilding then
+					UISettings.Preset = "Custom"
+					if settingsControls.Preset and type(settingsControls.Preset.Select) == "function" then
+						settingsBuilding = true
+						pcall(settingsControls.Preset.Select, settingsControls.Preset, "Custom")
+						settingsBuilding = false
+					end
+				end
+				if key == "BackgroundColor" or key == "SurfaceColor" or key == "AccentColor" or key == "TextColor" or key == "MutedTextColor" then
+					UISettings[key] = colorFrom(value, UISettings[key])
+				else
+					UISettings[key] = value
+				end
+				scheduleThemeApply()
+				queueUISettingsSave()
+			end
+
+			local function applyPreset(name, save)
+				name = tostring(name or "Default")
+				if name == "Custom" then
+					UISettings.Preset = "Custom"
+					if save ~= false then queueUISettingsSave() end
+					return true
+				end
+				local preset = UI_PRESETS[name]
+				if not preset then return false end
+				for key, value in pairs(UI_DEFAULTS) do UISettings[key] = value end
+				for key, value in pairs(preset) do UISettings[key] = value end
+				UISettings.Preset = name
+				applyUITheme()
+				syncSettingsControls()
+				if save ~= false then queueUISettingsSave() end
+				return true
+			end
+
+			function Window:GetUISettings()
+				return copySettings(UISettings)
+			end
+
+			function Window:SetUISettings(settings, save)
+				mergeUISettings(settings)
+				UISettings.Preset = type(settings) == "table" and tostring(settings.Preset or "Custom") or "Custom"
+				applyUITheme()
+				syncSettingsControls()
+				if save ~= false then queueUISettingsSave() end
+				return Window:GetUISettings()
+			end
+
+			function Window:ApplyUIPreset(name, save)
+				return applyPreset(name, save)
+			end
+
+			function Window:GetUIPresets()
+				local names = {}
+				for name in pairs(UI_PRESETS) do table.insert(names, name) end
+				table.sort(names)
+				table.insert(names, "Custom")
+				return names
+			end
+
+			function Window:SaveUISettings()
+				return storeUISettings(true)
+			end
+
+			function Window:ExportUISettings()
+				local ok, result = pcall(HttpService.JSONEncode, HttpService, serializeUISettings(UISettings))
+				return ok and result or nil
+			end
+
+			function Window:ImportUISettings(json, save)
+				if type(json) ~= "string" or json == "" then return false, "Empty JSON" end
+				local ok, decoded = pcall(HttpService.JSONDecode, HttpService, json)
+				if not ok or type(decoded) ~= "table" then return false, tostring(decoded) end
+				mergeUISettings(decoded.UISettings or decoded)
+				UISettings.Preset = "Custom"
+				applyUITheme()
+				syncSettingsControls()
+				if save ~= false then storeUISettings(true) end
+				return true
+			end
+
+			function Window:ResetUISettings(save)
+				for key, value in pairs(UI_DEFAULTS) do UISettings[key] = value end
+				applyUITheme()
+				syncSettingsControls()
+				if save ~= false then storeUISettings(true) end
+				return Window:GetUISettings()
+			end
+
+			function Window:GetUIProfileNames()
+				local names = {}
+				for name, profile in pairs(CONFIG.__NgotUIProfiles) do
+					if type(name) == "string" and type(profile) == "table" then table.insert(names, name) end
+				end
+				table.sort(names)
+				return names
+			end
+
+			function Window:SaveUIProfile(name)
+				name = tostring(name or ""):match("^%s*(.-)%s*$")
+				if name == "" then return false, "Profile name is empty" end
+				CONFIG.__NgotUIProfiles[name] = serializeUISettings(UISettings)
+				return WRITECONFIG(true)
+			end
+
+			function Window:LoadUIProfile(name, save)
+				local profile = CONFIG.__NgotUIProfiles[tostring(name or "")]
+				if type(profile) ~= "table" then return false, "Profile not found" end
+				mergeUISettings(profile)
+				UISettings.Preset = tostring(profile.Preset or "Custom")
+				applyUITheme()
+				syncSettingsControls()
+				if save ~= false then storeUISettings(true) end
+				return true
+			end
+
+			function Window:DeleteUIProfile(name)
+				name = tostring(name or "")
+				if CONFIG.__NgotUIProfiles[name] == nil then return false end
+				CONFIG.__NgotUIProfiles[name] = nil
+				return WRITECONFIG(true)
+			end
+
+			function Window:DeleteConfig()
+				if type(delfile) ~= "function" then return false, "delfile unavailable" end
+				local exists = true
+				if type(isfile) == "function" then
+					local ok, result = pcall(isfile, Window.ConfigPath)
+					exists = ok and result == true
+				end
+				if not exists then return true end
+				local ok, err = pcall(delfile, Window.ConfigPath)
+				return ok, err
+			end
+
+			local themeDescendantConnection = newWindow.DescendantAdded:Connect(function(descendant)
+				task.defer(function()
+					if not themeDestroyed and descendant and descendant.Parent then
+						applyThemeToObject(descendant)
+					end
+				end)
+			end)
+
+			local themeVisibilityConnection = newWindow:GetPropertyChangedSignal("Visible"):Connect(function()
+				if liquidBlur then
+					liquidBlur.Enabled = UISettings.BackgroundMode == "Liquid Glass" and UISettings.Blur > 0 and newWindow.Visible
+				end
+			end)
+
+			applyUITheme()
+
 			-- Functionalities
 
 			local selected
 			local TabLists = {}
 			local TabIndexList = {}
-			local function AddTabToList(name: string, tab: ScrollingFrame, tabbtn: GuiButton, hasicon: boolean)
-				local data = {
+			local UserTabIndexList = {}
+			local function AddTabToList(name: string, tab: ScrollingFrame, tabbtn: GuiButton, hasicon: boolean, isSystem: boolean)
+				local entry = {
 					Name = name,
 					TabObject = tab,
 					TabButton = tabbtn,
-					HasIcon = hasicon
+					HasIcon = hasicon,
+					System = isSystem == true,
 				}
-				TabLists[name] = data
-				table.insert(TabIndexList, TabLists[name])
+				TabLists[name] = entry
+				table.insert(TabIndexList, entry)
+				if not entry.System then
+					table.insert(UserTabIndexList, entry)
+				end
 			end
 
 			-- dropdown, the hardest part lol
@@ -3403,8 +3996,9 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				data = data or {}
 				local Tab = {}
 				local TabData = {
-					Title = data.Title or ("Tab " .. tostring(#TabIndexList + 1)),
+					Title = data.Title or ("Tab " .. tostring(#UserTabIndexList + 1)),
 					Icon = data.Icon or "circle",
+					System = data.__System == true,
 				}
 
                 local NAMETAB = TabData.Title
@@ -3429,7 +4023,8 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				newTab.Parent = newWindow.Tabs
 				newTab.Visible = false
 
-				AddTabToList(TabData.Title, newTab, newTabButton)
+				AddTabToList(TabData.Title, newTab, newTabButton, true, TabData.System)
+				newTabButton.LayoutOrder = TabData.System and 100000 or (#UserTabIndexList * 10)
 
 				--if not selected then selected = TabData.Title end
 
@@ -3482,6 +4077,19 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				end
 
 				local parentElement = newTab
+				Tab._Container = newTab
+				function Tab:_Use(methodName, elementData, targetParent)
+					local method = Tab[methodName]
+					if type(method) ~= "function" then
+						error("Unknown NgotStudio tab method: " .. tostring(methodName), 2)
+					end
+					local previousParent = parentElement
+					parentElement = targetParent or newTab
+					local ok, result = pcall(method, Tab, elementData)
+					parentElement = previousParent
+					if not ok then error(result, 2) end
+					return result
+				end
 
 				function Tab:Section(data)
 					data = data or {}
@@ -3537,6 +4145,12 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 							parentElement = newTab
 						end
 						newSection:Destroy()
+					end
+
+					Section._Container = newSection.Frame
+					Section._Tab = Tab
+					function Section:_Use(methodName, elementData)
+						return Tab:_Use(methodName, elementData, newSection.Frame)
 					end
 
 					parentElement = newSection.Frame
@@ -3596,7 +4210,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 					newButton.MouseEnter:Connect(function()
 						if not ButtonData.Locked then
-							Tween(newButton.UIStroke, {Color = Color3.fromRGB(10, 135, 213)}, TweenConfigs.Global)
+							Tween(newButton.UIStroke, {Color = UISettings.AccentColor}, TweenConfigs.Global)
 						end
 					end)
 
@@ -3604,8 +4218,8 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 						if not ButtonData.Locked then
 							Tween(newButton.UIStroke, {Color = Color3.fromRGB(60, 60, 74)}, TweenConfigs.Global)
 							newButton.BackgroundColor3 = Color3.fromRGB(42, 45, 52)
-							Tween(newButton.Frame.Title, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
-							Tween(newButton.Frame.Description, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
+							Tween(newButton.Frame.Title, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
+							Tween(newButton.Frame.Description, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
 						end
 					end)
 
@@ -3621,9 +4235,9 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 					newButton.MouseButton1Up:Connect(function()
 						if not ButtonData.Locked then
-							Tween(newButton.Frame.Title, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
-							Tween(newButton.Frame.Title.ClickIcon, {ImageColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
-							Tween(newButton.Frame.Description, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
+							Tween(newButton.Frame.Title, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
+							Tween(newButton.Frame.Title.ClickIcon, {ImageColor3 = UISettings.TextColor}, TweenConfigs.Global)
+							Tween(newButton.Frame.Description, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
 							local tw = Tween(newButton.Frame, {BackgroundTransparency = 1}, TweenConfigs.Global)
 						end
 					end)
@@ -3676,9 +4290,9 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 						ButtonData.Locked = false
 						Tween(newButton, {BackgroundColor3 = Color3.fromRGB(42, 45, 52)}, TweenConfigs.Global)
 						Tween(newButton.UIStroke, {Color = Color3.fromRGB(60, 60, 74)}, TweenConfigs.Global)
-						Tween(newButton.Frame.Title, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
-						Tween(newButton.Frame.Title.ClickIcon, {ImageColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
-						Tween(newButton.Frame.Description, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
+						Tween(newButton.Frame.Title, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
+						Tween(newButton.Frame.Title.ClickIcon, {ImageColor3 = UISettings.TextColor}, TweenConfigs.Global)
+						Tween(newButton.Frame.Description, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
 					end
 
 					function Button:Destroy()
@@ -3838,7 +4452,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 					local title = Instance.new("TextLabel", header)
 					title.BackgroundTransparency = 1
 					title.Text = Colorpicker.Title
-					title.TextColor3 = Color3.fromRGB(197, 204, 219)
+					title.TextColor3 = UISettings.TextColor
 					title.TextSize = 16
 					title.FontFace = Font.new([[rbxassetid://11702779517]], Enum.FontWeight.SemiBold, Enum.FontStyle.Normal)
 					title.TextXAlignment = Enum.TextXAlignment.Left
@@ -3847,7 +4461,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 					local desc = Instance.new("TextLabel", header)
 					desc.BackgroundTransparency = 1
 					desc.Text = Colorpicker.Desc
-					desc.TextColor3 = Color3.fromRGB(145, 154, 173)
+					desc.TextColor3 = UISettings.MutedTextColor
 					desc.TextSize = 12
 					desc.FontFace = Font.new([[rbxassetid://11702779517]], Enum.FontWeight.Medium, Enum.FontStyle.Normal)
 					desc.TextXAlignment = Enum.TextXAlignment.Left
@@ -3856,6 +4470,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 					desc.Visible = Colorpicker.Desc ~= ""
 
 					local preview = Instance.new("TextButton", header)
+					preview.Name = "NgotStudioColorPreview"
 					preview.Text = ""
 					preview.AutoButtonColor = false
 					preview.AnchorPoint = Vector2.new(1, 0.5)
@@ -3888,12 +4503,12 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 						local label = Instance.new("TextLabel", holder)
 						label.BackgroundTransparency = 1
 						label.Text = channel
-						label.TextColor3 = Color3.fromRGB(145, 154, 173)
+						label.TextColor3 = UISettings.MutedTextColor
 						label.TextSize = 12
 						label.Size = UDim2.fromOffset(20, 32)
 						local box = Instance.new("TextBox", holder)
 						box.BackgroundTransparency = 1
-						box.TextColor3 = Color3.fromRGB(197, 204, 219)
+						box.TextColor3 = UISettings.TextColor
 						box.TextSize = 13
 						box.ClearTextOnFocus = false
 						box.TextXAlignment = Enum.TextXAlignment.Left
@@ -3963,7 +4578,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 						Colorpicker.Locked = false
 						rootStroke.Color = Color3.fromRGB(61, 61, 75)
 						root.BackgroundColor3 = Color3.fromRGB(43, 46, 53)
-						title.TextColor3 = Color3.fromRGB(197, 204, 219)
+						title.TextColor3 = UISettings.TextColor
 						preview.Active = true
 					end
 					function Colorpicker:Destroy() root:Destroy() end
@@ -4007,7 +4622,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 					if Toggle.State == true then
 						newToggle.Title.Fill.Ball.Position = UDim2.new(0.5, 0,0.5, 0)
-						newToggle.Title.Fill.BackgroundColor3 = Color3.fromRGB(192, 209, 199)
+						newToggle.Title.Fill.BackgroundColor3 = UISettings.AccentColor
 						newToggle.Title.Fill.Ball.Icon.ImageTransparency = 0
 					else
 						newToggle.Title.Fill.Ball.Position = UDim2.new(0, 0,0.5, 0)
@@ -4033,7 +4648,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 					newToggle.Title.Fill.MouseEnter:Connect(function()
 						if not Toggle.Locked then
-							Tween(newToggle.UIStroke, {Color = Color3.fromRGB(10, 135, 213)}, TweenConfigs.Global)
+							Tween(newToggle.UIStroke, {Color = UISettings.AccentColor}, TweenConfigs.Global)
 						end
 					end)
 
@@ -4042,15 +4657,15 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 							Tween(newToggle.UIStroke, {Color = Color3.fromRGB(60, 60, 74)}, TweenConfigs.Global)
 
 							newToggle.BackgroundColor3 = Color3.fromRGB(42, 45, 52)
-							Tween(newToggle.Title, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
-							Tween(newToggle.Description, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
+							Tween(newToggle.Title, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
+							Tween(newToggle.Description, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
 						end
 					end)
 
 					local function AnimateSwitch(targetState)
 						if targetState == true then
 							Tween(newToggle.Title.Fill.Ball, {Position = UDim2.new(0.5, 0,0.5, 0)}, TweenConfigs.Global)
-							Tween(newToggle.Title.Fill, {BackgroundColor3 = Color3.fromRGB(192, 209, 199)}, TweenConfigs.Global)
+							Tween(newToggle.Title.Fill, {BackgroundColor3 = UISettings.AccentColor}, TweenConfigs.Global)
 
 							Tween(newToggle.Title.Fill.Ball.Icon, {ImageTransparency = 0}, TweenConfigs.Global)
 						elseif targetState == false then
@@ -4114,8 +4729,8 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 						Toggle.Locked = false
 						Tween(newToggle, {BackgroundColor3 = Color3.fromRGB(42, 45, 52)}, TweenConfigs.Global)
 						Tween(newToggle.UIStroke, {Color = Color3.fromRGB(60, 60, 74)}, TweenConfigs.Global)
-						Tween(newToggle.Title, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
-						Tween(newToggle.Description, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
+						Tween(newToggle.Title, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
+						Tween(newToggle.Description, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
 
 						Tween(newToggle.Title.Fill, {BackgroundTransparency = 0}, TweenConfigs.Global)
 						Tween(newToggle.Title.Fill.Ball, {BackgroundTransparency = 0}, TweenConfigs.Global)
@@ -4317,7 +4932,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 					Trigger.MouseEnter:Connect(function()
 						Hovering = true
 						if not Slider.Locked then
-							Tween(newSlider.UIStroke, {Color = Color3.fromRGB(10, 135, 213)}, TweenConfigs.Global)
+							Tween(newSlider.UIStroke, {Color = UISettings.AccentColor}, TweenConfigs.Global)
 						end
 					end)
 
@@ -4379,8 +4994,8 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 						Tween(newSlider, {BackgroundColor3 = Color3.fromRGB(42, 45, 52)}, TweenConfigs.Global)
 						Tween(newSlider.UIStroke, {Color = Color3.fromRGB(60, 60, 74)}, TweenConfigs.Global)
-						Tween(newSlider.Title, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
-						Tween(newSlider.Description, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
+						Tween(newSlider.Title, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
+						Tween(newSlider.Description, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
 
 						Tween(newSlider.SliderFrame.Frame.Slider.UIStroke, {Color = Color3.fromRGB(60, 60, 74)}, TweenConfigs.Global)
 						Tween(newSlider.SliderFrame.Frame.Slider, {BackgroundTransparency = 0}, TweenConfigs.Global)
@@ -4468,7 +5083,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 					newInput.BoxFrame.Frame.TextBox.MouseEnter:Connect(function()
 						if not Input.Locked then
-							Tween(newInput.UIStroke, {Color = Color3.fromRGB(10, 135, 213)}, TweenConfigs.Global)
+							Tween(newInput.UIStroke, {Color = UISettings.AccentColor}, TweenConfigs.Global)
 						end
 					end)
 
@@ -4481,7 +5096,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 					newInput.BoxFrame.Frame.TextBox.Focused:Connect(function()
 						if not Input.Locked then
 							Tween(newInput.UIStroke, {Color = Color3.fromRGB(60, 60, 74)}, TweenConfigs.Global)
-							Tween(newInput.BoxFrame.Frame.UIStroke, {Color = Color3.fromRGB(10, 135, 213)}, TweenConfigs.Global)
+							Tween(newInput.BoxFrame.Frame.UIStroke, {Color = UISettings.AccentColor}, TweenConfigs.Global)
 						end
 					end)
 
@@ -4549,14 +5164,14 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 						Tween(newInput.UIStroke, {Color = Color3.fromRGB(60, 60, 74)}, TweenConfigs.Global)
 						Tween(newInput, {BackgroundColor3 = Color3.fromRGB(42, 45, 52)}, TweenConfigs.Global)
 
-						Tween(newInput.Title, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
-						Tween(newInput.Description, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
+						Tween(newInput.Title, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
+						Tween(newInput.Description, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
 
 						Tween(newInput.BoxFrame.Frame, {BackgroundColor3 = Color3.fromRGB(42, 45, 52)}, TweenConfigs.Global)
 						Tween(newInput.BoxFrame.Frame.UIStroke, {Color = Color3.fromRGB(60, 60, 74)}, TweenConfigs.Global)
 
 						Tween(newInput.BoxFrame.Frame.TextBox, {
-							TextColor3 = Color3.fromRGB(196, 203, 218),
+							TextColor3 = UISettings.TextColor,
 							PlaceholderColor3 = Color3.fromRGB(139, 139, 139)
 						}, TweenConfigs.Global)
 
@@ -4700,16 +5315,16 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 							for _,otherButton in dropdownFolder.DropdownItems:GetChildren() do
 								if otherButton:IsA("GuiButton") and otherButton.Name ~= newvalue then
-									Tween(otherButton.Frame.Title, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
-									Tween(otherButton.Frame.Description, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
+									Tween(otherButton.Frame.Title, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
+									Tween(otherButton.Frame.Description, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
 									Tween(otherButton.Frame, {BackgroundTransparency = 1}, TweenConfigs.Global)
 									Tween(otherButton.UIStroke, {Color = Color3.fromRGB(60, 60, 74)}, TweenConfigs.Global)
 								end
 							end
 							for _,otherButton in dropdownFolder.DropdownItemsSearch:GetChildren() do
 								if otherButton:IsA("GuiButton") and otherButton.Name ~= newvalue then
-									Tween(otherButton.Frame.Title, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
-									Tween(otherButton.Frame.Description, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
+									Tween(otherButton.Frame.Title, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
+									Tween(otherButton.Frame.Description, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
 									Tween(otherButton.Frame, {BackgroundTransparency = 1}, TweenConfigs.Global)
 									Tween(otherButton.UIStroke, {Color = Color3.fromRGB(60, 60, 74)}, TweenConfigs.Global)
 								end
@@ -4717,12 +5332,12 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 							Tween(targetButton.Frame.Title, {TextColor3 = Color3.fromRGB(255,255,255)}, TweenConfigs.Global)
 							Tween(targetButton.Frame.Description, {TextColor3 = Color3.fromRGB(255,255,255)}, TweenConfigs.Global)
-							Tween(targetButton.UIStroke, {Color = Color3.fromRGB(10, 135, 213)}, TweenConfigs.Global)
+							Tween(targetButton.UIStroke, {Color = UISettings.AccentColor}, TweenConfigs.Global)
 							Tween(targetButton.Frame, {BackgroundTransparency = 0}, TweenConfigs.Global)
 
 							Tween(targetbuttonSearch.Frame.Title, {TextColor3 = Color3.fromRGB(255,255,255)}, TweenConfigs.Global)
 							Tween(targetbuttonSearch.Frame.Description, {TextColor3 = Color3.fromRGB(255,255,255)}, TweenConfigs.Global)
-							Tween(targetbuttonSearch.UIStroke, {Color = Color3.fromRGB(10, 135, 213)}, TweenConfigs.Global)
+							Tween(targetbuttonSearch.UIStroke, {Color = UISettings.AccentColor}, TweenConfigs.Global)
 							Tween(targetbuttonSearch.Frame, {BackgroundTransparency = 0}, TweenConfigs.Global)
                             if selected == "None" then return "" end
 							return selected	
@@ -4744,13 +5359,13 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 									table.remove(selected, idx)
 
-									Tween(targetButton.Frame.Title, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
-									Tween(targetButton.Frame.Description, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
+									Tween(targetButton.Frame.Title, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
+									Tween(targetButton.Frame.Description, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
 									Tween(targetButton.UIStroke, {Color = Color3.fromRGB(60, 60, 74)}, TweenConfigs.Global)
 									Tween(targetButton.Frame, {BackgroundTransparency = 1}, TweenConfigs.Global)
 
-									Tween(targetbuttonSearch.Frame.Title, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
-									Tween(targetbuttonSearch.Frame.Description, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
+									Tween(targetbuttonSearch.Frame.Title, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
+									Tween(targetbuttonSearch.Frame.Description, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
 									Tween(targetbuttonSearch.UIStroke, {Color = Color3.fromRGB(60, 60, 74)}, TweenConfigs.Global)
 									Tween(targetbuttonSearch.Frame, {BackgroundTransparency = 1}, TweenConfigs.Global)
 								else
@@ -4759,12 +5374,12 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 									Tween(targetButton.Frame.Title, {TextColor3 = Color3.fromRGB(255,255,255)}, TweenConfigs.Global)
 									Tween(targetButton.Frame.Description, {TextColor3 = Color3.fromRGB(255,255,255)}, TweenConfigs.Global)
-									Tween(targetButton.UIStroke, {Color = Color3.fromRGB(10, 135, 213)}, TweenConfigs.Global)
+									Tween(targetButton.UIStroke, {Color = UISettings.AccentColor}, TweenConfigs.Global)
 									Tween(targetButton.Frame, {BackgroundTransparency = 0}, TweenConfigs.Global)
 
 									Tween(targetbuttonSearch.Frame.Title, {TextColor3 = Color3.fromRGB(255,255,255)}, TweenConfigs.Global)
 									Tween(targetbuttonSearch.Frame.Description, {TextColor3 = Color3.fromRGB(255,255,255)}, TweenConfigs.Global)
-									Tween(targetbuttonSearch.UIStroke, {Color = Color3.fromRGB(10, 135, 213)}, TweenConfigs.Global)
+									Tween(targetbuttonSearch.UIStroke, {Color = UISettings.AccentColor}, TweenConfigs.Global)
 									Tween(targetbuttonSearch.Frame, {BackgroundTransparency = 0}, TweenConfigs.Global)
 								end
 							end
@@ -4824,13 +5439,13 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 								if selected == buttonName then
 									newDropdownButton.Frame.Title.TextColor3 = Color3.fromRGB(255,255,255)
 									newDropdownButton.Frame.Description.TextColor3 = Color3.fromRGB(255,255,255)
-									newDropdownButton.UIStroke.Color = Color3.fromRGB(10, 135, 213)
+									newDropdownButton.UIStroke.Color = UISettings.AccentColor
 									newDropdownButton.Frame.BackgroundTransparency = 0
 									newDropdownButton.Frame.Title.TextColor3 = Color3.fromRGB(255,255,255)
 
 									newDropdownButtonSearch.Frame.Title.TextColor3 = Color3.fromRGB(255,255,255)
 									newDropdownButtonSearch.Frame.Description.TextColor3 = Color3.fromRGB(255,255,255)
-									newDropdownButtonSearch.UIStroke.Color = Color3.fromRGB(10, 135, 213)
+									newDropdownButtonSearch.UIStroke.Color = UISettings.AccentColor
 									newDropdownButtonSearch.Frame.BackgroundTransparency = 0
 									newDropdownButtonSearch.Frame.Title.TextColor3 = Color3.fromRGB(255,255,255)
 								end
@@ -4877,13 +5492,13 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 								if table.find(selected, buttonName) then
 									newDropdownButton.Frame.Title.TextColor3 = Color3.fromRGB(255,255,255)
 									newDropdownButton.Frame.Description.TextColor3 = Color3.fromRGB(255,255,255)
-									newDropdownButton.UIStroke.Color = Color3.fromRGB(10, 135, 213)
+									newDropdownButton.UIStroke.Color = UISettings.AccentColor
 									newDropdownButton.Frame.BackgroundTransparency = 0
 									newDropdownButton.Frame.Title.TextColor3 = Color3.fromRGB(255,255,255)
 
 									newDropdownButtonSearch.Frame.Title.TextColor3 = Color3.fromRGB(255,255,255)
 									newDropdownButtonSearch.Frame.Description.TextColor3 = Color3.fromRGB(255,255,255)
-									newDropdownButtonSearch.UIStroke.Color = Color3.fromRGB(10, 135, 213)
+									newDropdownButtonSearch.UIStroke.Color = UISettings.AccentColor
 									newDropdownButtonSearch.Frame.BackgroundTransparency = 0
 									newDropdownButtonSearch.Frame.Title.TextColor3 = Color3.fromRGB(255,255,255)
 								end
@@ -5015,13 +5630,13 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 						Tween(newDropdown.UIStroke, {Color = Color3.fromRGB(60, 60, 74)}, TweenConfigs.Global)
 						Tween(newDropdown, {BackgroundColor3 = Color3.fromRGB(42, 45, 52)}, TweenConfigs.Global)
 
-						Tween(newDropdown.Title, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
-						Tween(newDropdown.Description, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
-						Tween(newDropdown.Title.ClickIcon, {ImageColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
+						Tween(newDropdown.Title, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
+						Tween(newDropdown.Description, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
+						Tween(newDropdown.Title.ClickIcon, {ImageColor3 = UISettings.TextColor}, TweenConfigs.Global)
 
 						Tween(newDropdown.Title.BoxFrame.Trigger, {BackgroundColor3 = Color3.fromRGB(42, 45, 52)}, TweenConfigs.Global)
 						Tween(newDropdown.Title.BoxFrame.Trigger.UIStroke, {Color = Color3.fromRGB(60, 60, 74)}, TweenConfigs.Global)
-						Tween(newDropdown.Title.BoxFrame.Trigger.Title, {TextColor3 = Color3.fromRGB(196, 203, 218)}, TweenConfigs.Global)
+						Tween(newDropdown.Title.BoxFrame.Trigger.Title, {TextColor3 = UISettings.TextColor}, TweenConfigs.Global)
 
 						newDropdown.Active = true
 						newDropdown.Interactable = true
@@ -5133,7 +5748,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 					nameLabel.Text = Info.Name
 					nameLabel.FontFace = Font.new([[rbxassetid://11702779517]], Enum.FontWeight.Bold, Enum.FontStyle.Normal)
 					nameLabel.TextSize = 16
-					nameLabel.TextColor3 = Color3.fromRGB(197, 204, 219)
+					nameLabel.TextColor3 = UISettings.TextColor
 					nameLabel.BackgroundTransparency = 1
 					nameLabel.AutomaticSize = Enum.AutomaticSize.X
 					nameLabel.Size = UDim2.new(0, 0, 0, 18)
@@ -5146,7 +5761,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 						badge.FontFace = Font.new([[rbxassetid://11702779517]], Enum.FontWeight.Bold, Enum.FontStyle.Normal)
 						badge.TextSize = 11
 						badge.TextColor3 = Color3.fromRGB(255, 255, 255)
-						badge.BackgroundColor3 = Color3.fromRGB(10, 135, 213)
+						badge.BackgroundColor3 = UISettings.AccentColor
 						badge.AutomaticSize = Enum.AutomaticSize.X
 						badge.Size = UDim2.new(0, 0, 0, 16)
 						badge.LayoutOrder = i + 1
@@ -5162,7 +5777,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 					bioLabel.Text = Info.Bio
 					bioLabel.FontFace = Font.new([[rbxassetid://11702779517]], Enum.FontWeight.Medium, Enum.FontStyle.Normal)
 					bioLabel.TextSize = 13
-					bioLabel.TextColor3 = Color3.fromRGB(145, 154, 173)
+					bioLabel.TextColor3 = UISettings.MutedTextColor
 					bioLabel.TextXAlignment = Enum.TextXAlignment.Left
 					bioLabel.TextWrapped = true
 					bioLabel.BackgroundTransparency = 1
@@ -5262,7 +5877,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 					nameLabel2.Text = Discord.Name
 					nameLabel2.FontFace = Font.new([[rbxassetid://11702779517]], Enum.FontWeight.Bold, Enum.FontStyle.Normal)
 					nameLabel2.TextSize = 16
-					nameLabel2.TextColor3 = Color3.fromRGB(197, 204, 219)
+					nameLabel2.TextColor3 = UISettings.TextColor
 					nameLabel2.TextXAlignment = Enum.TextXAlignment.Left
 					nameLabel2.BackgroundTransparency = 1
 					nameLabel2.AutomaticSize = Enum.AutomaticSize.Y
@@ -5274,7 +5889,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 					descLabel.Text = Discord.Desc
 					descLabel.FontFace = Font.new([[rbxassetid://11702779517]], Enum.FontWeight.Medium, Enum.FontStyle.Normal)
 					descLabel.TextSize = 12
-					descLabel.TextColor3 = Color3.fromRGB(145, 154, 173)
+					descLabel.TextColor3 = UISettings.MutedTextColor
 					descLabel.TextXAlignment = Enum.TextXAlignment.Left
 					descLabel.TextWrapped = true
 					descLabel.BackgroundTransparency = 1
@@ -5361,16 +5976,29 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 
 			function Window:SelectTab(index)
-				local tabtarget = TabIndexList[index]
+				local tabtarget
+				if type(index) == "string" then
+					tabtarget = TabLists[index]
+				else
+					tabtarget = UserTabIndexList[tonumber(index)]
+				end
 				if tabtarget then
 					SelectTab(tabtarget.Name)
+					return true
 				end
+				return false
+			end
+
+			function Window:OpenUISettings()
+				return Window:SelectTab(Window.SettingsTitle)
 			end
 
 			function Window:Divider()
 				local newDivier = Templates.Divider:Clone()
+				newDivier.LayoutOrder = (#UserTabIndexList * 10) + 5
 				newDivier.Parent = newWindow.TabButtons.Lists
 				newDivier.Visible = true
+				return newDivier
 			end
 
 			function Window:SetToggleKey(newKey)
@@ -5631,7 +6259,11 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 			function Window:Destroy()
 				if windowDestroyed then return end
 				windowDestroyed = true
+				themeDestroyed = true
 				timeout = true
+				if themeDescendantConnection then themeDescendantConnection:Disconnect(); themeDescendantConnection = nil end
+				if themeVisibilityConnection then themeVisibilityConnection:Disconnect(); themeVisibilityConnection = nil end
+				if liquidBlur and liquidBlur.Parent then liquidBlur:Destroy() end
 				if keybindConnection then keybindConnection:Disconnect(); keybindConnection = nil end
 				if windowDraggable then windowDraggable:Destroy() end
 				if floatingDraggable then floatingDraggable:Destroy() end
@@ -5703,7 +6335,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 					Tween(newWindow, {Size = oldWindowSizeMaximize}, TweenConfigs.Global)
 					Tween(newWindow, {Position = oldWindowPositionMaximize}, TweenConfigs.Global)
 
-					Tween(newWindow.UICorner, {CornerRadius = UDim.new(0,10)}, TweenConfigs.Global)
+					Tween(newWindow.UICorner, {CornerRadius = UDim.new(0, UISettings.CornerRadius)}, TweenConfigs.Global)
 
 					maximizedWindow = false
 				end
@@ -5722,6 +6354,300 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 					end)
 				end
 			end)
+
+			-- =====================================================
+			-- Built-in Settings Ui tab
+			-- =====================================================
+			if Window.SettingsUI then
+				settingsBuilding = true
+				CONFIG[Window.SettingsTitle] = {}
+				local settingsDivider = Templates.Divider:Clone()
+				settingsDivider.Name = "SettingsUiDivider"
+				settingsDivider.LayoutOrder = 99999
+				settingsDivider.Parent = newWindow.TabButtons.Lists
+				settingsDivider.Visible = true
+				local SettingsTab = Window:Tab({ Title = Window.SettingsTitle, Icon = Window.SettingsIcon, __System = true })
+				Window.SettingsTab = SettingsTab
+
+				SettingsTab:Paragraph({
+					Title = "UI / UX Customization",
+					Desc = "Customize theme, font, opacity, background, Liquid Glass, animation and saved UI profiles. Changes are applied live.",
+				})
+
+				SettingsTab:Section({ Title = "Theme & Appearance", Default = true })
+				local presetNames = Window:GetUIPresets()
+				local presetDropdown
+				presetDropdown = SettingsTab:Dropdown({
+					Title = "Theme Preset",
+					Desc = "Quick presets. Liquid Glass simulates the iOS 26 translucent glass style.",
+					Values = presetNames,
+					Value = table.find(presetNames, UISettings.Preset) and UISettings.Preset or "Default",
+					Callback = function(value)
+						if settingsBuilding then return end
+						applyPreset(value, true)
+					end,
+				})
+				settingsControls.Preset = presetDropdown
+
+				settingsControls.Font = SettingsTab:Dropdown({
+					Title = "Font",
+					Values = { "Gotham", "GothamMedium", "GothamBold", "SourceSans", "SourceSansSemibold", "Arial", "Code", "Cartoon", "SciFi" },
+					Value = UISettings.Font,
+					Callback = function(value) setUISetting("Font", value) end,
+				})
+
+				settingsControls.TextScale = SettingsTab:Slider({
+					Title = "Text Scale", Desc = "Scale text without resizing the whole window.", Step = 0.05,
+					Value = { Min = 0.7, Max = 1.5, Default = UISettings.TextScale },
+					Callback = function(value) setUISetting("TextScale", value) end,
+				})
+
+				settingsControls.UIScale = SettingsTab:Slider({
+					Title = "UI Scale", Desc = "Scale the entire UI.", Step = 0.05,
+					Value = { Min = 0.65, Max = 1.5, Default = UISettings.UIScale },
+					Callback = function(value) setUISetting("UIScale", value) end,
+				})
+
+				settingsControls.CornerRadius = SettingsTab:Slider({
+					Title = "Corner Radius", Desc = "Global rounded corner amount.", Step = 1,
+					Value = { Min = 0, Max = 28, Default = UISettings.CornerRadius },
+					Callback = function(value) setUISetting("CornerRadius", value) end,
+				})
+
+				settingsControls.AccentColor = SettingsTab:Colorpicker({
+					Title = "Accent Color", Desc = "Buttons, highlights and selected states.", Default = UISettings.AccentColor,
+					Callback = function(value) setUISetting("AccentColor", value) end,
+				})
+				settingsControls.TextColor = SettingsTab:Colorpicker({
+					Title = "Text Color", Default = UISettings.TextColor,
+					Callback = function(value) setUISetting("TextColor", value) end,
+				})
+				settingsControls.MutedTextColor = SettingsTab:Colorpicker({
+					Title = "Muted Text", Default = UISettings.MutedTextColor,
+					Callback = function(value) setUISetting("MutedTextColor", value) end,
+				})
+
+				SettingsTab:Section({ Title = "Background & Glass", Default = true })
+				settingsControls.BackgroundMode = SettingsTab:Dropdown({
+					Title = "Background Mode", Values = { "Color", "Image", "Liquid Glass" }, Value = UISettings.BackgroundMode,
+					Callback = function(value) setUISetting("BackgroundMode", value) end,
+				})
+				settingsControls.BackgroundColor = SettingsTab:Colorpicker({
+					Title = "Background Color", Default = UISettings.BackgroundColor,
+					Callback = function(value) setUISetting("BackgroundColor", value) end,
+				})
+				settingsControls.SurfaceColor = SettingsTab:Colorpicker({
+					Title = "Box / Surface Color", Default = UISettings.SurfaceColor,
+					Callback = function(value) setUISetting("SurfaceColor", value) end,
+				})
+				settingsControls.WindowOpacity = SettingsTab:Slider({
+					Title = "Window Opacity", Desc = "100 = opaque, lower values = more transparent.", Step = 1,
+					Value = { Min = 15, Max = 100, Default = UISettings.WindowOpacity },
+					Callback = function(value) setUISetting("WindowOpacity", value) end,
+				})
+				settingsControls.BoxOpacity = SettingsTab:Slider({
+					Title = "Box Opacity", Desc = "Opacity of cards, controls and panels.", Step = 1,
+					Value = { Min = 10, Max = 100, Default = UISettings.BoxOpacity },
+					Callback = function(value) setUISetting("BoxOpacity", value) end,
+				})
+
+				local backgroundImageValue = UISettings.BackgroundImage
+				settingsControls.BackgroundImage = SettingsTab:Input({
+					Title = "Background Image", Desc = "Asset ID or rbxassetid:// URL.", Placeholder = "rbxassetid://123456789",
+					Default = backgroundImageValue,
+					Callback = function(value)
+						backgroundImageValue = tostring(value or "")
+						setUISetting("BackgroundImage", backgroundImageValue)
+					end,
+				})
+				settingsControls.BackgroundImageScale = SettingsTab:Dropdown({
+					Title = "Image Scale", Values = { "Crop", "Fit", "Stretch", "Tile" }, Value = UISettings.BackgroundImageScale,
+					Callback = function(value) setUISetting("BackgroundImageScale", value) end,
+				})
+				settingsControls.BackgroundImageTransparency = SettingsTab:Slider({
+					Title = "Image Transparency", Step = 1,
+					Value = { Min = 0, Max = 100, Default = UISettings.BackgroundImageTransparency },
+					Callback = function(value) setUISetting("BackgroundImageTransparency", value) end,
+				})
+				settingsControls.Blur = SettingsTab:Slider({
+					Title = "Glass Blur", Desc = "BlurEffect strength used by Liquid Glass.", Step = 1,
+					Value = { Min = 0, Max = 32, Default = UISettings.Blur },
+					Callback = function(value) setUISetting("Blur", value) end,
+				})
+				settingsControls.LiquidGlassStrength = SettingsTab:Slider({
+					Title = "Liquid Glass Strength", Desc = "Controls panel translucency and highlight intensity.", Step = 1,
+					Value = { Min = 0, Max = 100, Default = UISettings.LiquidGlassStrength },
+					Callback = function(value) setUISetting("LiquidGlassStrength", value) end,
+				})
+
+				SettingsTab:Section({ Title = "Motion & Controls", Default = false })
+				settingsControls.AnimationSpeed = SettingsTab:Slider({
+					Title = "Animation Speed", Desc = "1.0 = normal. Higher = faster.", Step = 0.05,
+					Value = { Min = 0.2, Max = 3, Default = UISettings.AnimationSpeed },
+					Callback = function(value) setUISetting("AnimationSpeed", value) end,
+				})
+				settingsControls.ReduceMotion = SettingsTab:Toggle({
+					Title = "Reduce Motion", Desc = "Makes most UI transitions nearly instant.", Default = UISettings.ReduceMotion,
+					Callback = function(value) setUISetting("ReduceMotion", value == true) end,
+				})
+				settingsControls.ShowFloatingButtonText = SettingsTab:Toggle({
+					Title = "Floating Button Text", Desc = "Show the window title on the floating open button.", Default = UISettings.ShowFloatingButtonText,
+					Callback = function(value) setUISetting("ShowFloatingButtonText", value == true) end,
+				})
+
+				SettingsTab:Section({ Title = "Save Management", Default = false })
+				SettingsTab:Toggle({
+					Title = "Auto Save", Desc = "Automatically save element config and UI settings.", Default = Window.AutoSave,
+					Callback = function(value)
+						Window.AutoSave = value == true
+						if Window.AutoSave and not settingsBuilding then storeUISettings(true) end
+					end,
+				})
+				SettingsTab:Button({
+					Title = "Save Now", Desc = "Immediately write all current settings to disk.",
+					Callback = function()
+						storeUISettings(true)
+						LIB:Notify({ Title = "Settings Ui", Content = "Config saved.", Icon = "save", Duration = 2.5 })
+					end,
+				})
+
+				local profileName = "My Theme"
+				local selectedProfile = nil
+				SettingsTab:Input({
+					Title = "Profile Name", Placeholder = "My Theme", Default = profileName,
+					Callback = function(value) profileName = tostring(value or "") end,
+				})
+				local function profileValues()
+					local values = Window:GetUIProfileNames()
+					if #values == 0 then return { "None" } end
+					return values
+				end
+				local profileDropdown = SettingsTab:Dropdown({
+					Title = "Saved Profiles", Values = profileValues(), Value = "None", AllowNone = true,
+					Callback = function(value)
+						selectedProfile = value ~= "" and value ~= "None" and value or nil
+					end,
+				})
+				SettingsTab:Button({
+					Title = "Save Profile", Desc = "Save the current UI appearance as a named profile.",
+					Callback = function()
+						local ok, err = Window:SaveUIProfile(profileName)
+						profileDropdown:Refresh(profileValues())
+						if ok then profileDropdown:Select(profileName) end
+						LIB:Notify({ Title = "UI Profile", Content = ok and ("Saved: " .. profileName) or tostring(err), Icon = ok and "circle-check" or "triangle-alert", Duration = 3 })
+					end,
+				})
+				SettingsTab:Button({
+					Title = "Load Profile", Desc = "Apply the selected saved profile.",
+					Callback = function()
+						if not selectedProfile then return end
+						local ok, err = Window:LoadUIProfile(selectedProfile, true)
+						LIB:Notify({ Title = "UI Profile", Content = ok and ("Loaded: " .. selectedProfile) or tostring(err), Icon = ok and "circle-check" or "triangle-alert", Duration = 3 })
+					end,
+				})
+				SettingsTab:Button({
+					Title = "Delete Profile", Desc = "Delete the selected UI profile.",
+					Callback = function()
+						if not selectedProfile then return end
+						local deleted = Window:DeleteUIProfile(selectedProfile)
+						if deleted then selectedProfile = nil; profileDropdown:Refresh(profileValues()) end
+					end,
+				})
+
+				local importJSON = ""
+				SettingsTab:Button({
+					Title = "Copy UI JSON", Desc = "Copy current UI settings as JSON.",
+					Callback = function()
+						local json = Window:ExportUISettings()
+						if json and CopyText(json) then
+							LIB:Notify({ Title = "Settings Ui", Content = "UI JSON copied.", Icon = "copy", Duration = 2.5 })
+						end
+					end,
+				})
+				SettingsTab:Input({
+					Title = "Import UI JSON", Desc = "Paste exported UI JSON, then press Import.", Placeholder = "{ ... }", MultiLine = true,
+					Callback = function(value) importJSON = tostring(value or "") end,
+				})
+				SettingsTab:Button({
+					Title = "Import JSON",
+					Callback = function()
+						local ok, err = Window:ImportUISettings(importJSON, true)
+						LIB:Notify({ Title = "Settings Ui", Content = ok and "UI settings imported." or tostring(err), Icon = ok and "circle-check" or "triangle-alert", Duration = 3 })
+					end,
+				})
+				SettingsTab:Button({
+					Title = "Copy Config Path", Desc = Window:GetConfigPath(),
+					Callback = function() CopyText(Window:GetConfigPath()) end,
+				})
+				SettingsTab:Button({
+					Title = "Reset UI Settings", Desc = "Restore NgotStudio default appearance.",
+					Callback = function()
+						Window:Dialog({
+							Title = "Reset UI Settings", Content = "Reset all UI/UX customization to defaults?", Icon = "rotate-ccw",
+							Buttons = {
+								{ Title = "Cancel" },
+								{ Title = "Reset", Callback = function()
+									Window:ResetUISettings(true)
+									LIB:Notify({ Title = "Settings Ui", Content = "UI settings reset.", Icon = "circle-check", Duration = 2.5 })
+								end },
+							},
+						})
+					end,
+				})
+				SettingsTab:Button({
+					Title = "Delete Config File", Desc = "Delete the saved config from the executor filesystem.",
+					Callback = function()
+						Window:Dialog({
+							Title = "Delete Config", Content = "Delete the saved config file? Current runtime values stay active until re-execute.", Icon = "trash-2",
+							Buttons = {
+								{ Title = "Cancel" },
+								{ Title = "Delete", Callback = function()
+									local ok, err = Window:DeleteConfig()
+									LIB:Notify({ Title = "Config", Content = ok and "Config file deleted." or tostring(err), Icon = ok and "circle-check" or "triangle-alert", Duration = 3 })
+								end },
+							},
+						})
+					end,
+				})
+
+				syncSettingsControls = function()
+					if not Window.SettingsUI then return end
+					local previous = settingsBuilding
+					settingsBuilding = true
+					local function setControl(key, method, value)
+						local control = settingsControls[key]
+						if control and type(control[method]) == "function" then
+							pcall(control[method], control, value)
+						end
+					end
+					if UISettings.Preset then setControl("Preset", "Select", UISettings.Preset) end
+					setControl("Font", "Select", UISettings.Font)
+					setControl("TextScale", "Set", UISettings.TextScale)
+					setControl("UIScale", "Set", UISettings.UIScale)
+					setControl("CornerRadius", "Set", UISettings.CornerRadius)
+					setControl("AccentColor", "Set", UISettings.AccentColor)
+					setControl("TextColor", "Set", UISettings.TextColor)
+					setControl("MutedTextColor", "Set", UISettings.MutedTextColor)
+					setControl("BackgroundMode", "Select", UISettings.BackgroundMode)
+					setControl("BackgroundColor", "Set", UISettings.BackgroundColor)
+					setControl("SurfaceColor", "Set", UISettings.SurfaceColor)
+					setControl("WindowOpacity", "Set", UISettings.WindowOpacity)
+					setControl("BoxOpacity", "Set", UISettings.BoxOpacity)
+					setControl("BackgroundImage", "Set", UISettings.BackgroundImage)
+					setControl("BackgroundImageScale", "Select", UISettings.BackgroundImageScale)
+					setControl("BackgroundImageTransparency", "Set", UISettings.BackgroundImageTransparency)
+					setControl("Blur", "Set", UISettings.Blur)
+					setControl("LiquidGlassStrength", "Set", UISettings.LiquidGlassStrength)
+					setControl("AnimationSpeed", "Set", UISettings.AnimationSpeed)
+					setControl("ReduceMotion", "Set", UISettings.ReduceMotion)
+					setControl("ShowFloatingButtonText", "Set", UISettings.ShowFloatingButtonText)
+					settingsBuilding = previous
+				end
+
+				settingsBuilding = false
+				applyUITheme()
+				CONFIG.__NgotUISettings = serializeUISettings(UISettings)
+			end
 
 			return Window
 		end
