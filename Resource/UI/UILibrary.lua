@@ -3294,6 +3294,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 			}
 
 			local UI_DEFAULTS = {
+				Enabled = false,
 				Preset = "Default",
 				Font = "Gotham",
 				TextScale = 1,
@@ -3367,6 +3368,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 			local function serializeUISettings(settings)
 				return {
+					Enabled = settings.Enabled == true,
 					Preset = settings.Preset,
 					Font = settings.Font,
 					TextScale = settings.TextScale,
@@ -3393,6 +3395,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 			local function mergeUISettings(source)
 				if type(source) ~= "table" then return end
+				if source.Enabled ~= nil then UISettings.Enabled = source.Enabled == true end
 				if type(source.Preset) == "string" then UISettings.Preset = source.Preset end
 				if type(source.Font) == "string" and FONT_MAP[source.Font] then UISettings.Font = source.Font end
 				UISettings.TextScale = clampNumber(source.TextScale, 0.7, 1.5, UISettings.TextScale)
@@ -3416,7 +3419,16 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				if source.ShowFloatingButtonText ~= nil then UISettings.ShowFloatingButtonText = source.ShowFloatingButtonText == true end
 			end
 
-			mergeUISettings(CONFIG.__NgotUISettings)
+			local savedUISettings = CONFIG.__NgotUISettings
+			-- Backward-compatibility safety: old Settings Ui builds did not store Enabled and
+			-- repainted the original UI on startup. Only restore a theme when it was saved
+			-- explicitly by this non-destructive edition.
+			if type(savedUISettings) == "table" and savedUISettings.Enabled == true then
+				mergeUISettings(savedUISettings)
+			else
+				UISettings.Enabled = false
+				UISettings.Preset = "Default"
+			end
 			if type(CONFIG.__NgotUIProfiles) ~= "table" then CONFIG.__NgotUIProfiles = {} end
 
 			local backgroundLayer = Instance.new("ImageLabel")
@@ -3488,6 +3500,61 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				return state
 			end
 
+			local function restoreThemeObject(instance)
+				local base = themeBase[instance]
+				if not base or not instance or not instance.Parent then return end
+				if instance:IsA("GuiObject") then
+					if base.BackgroundColor3 ~= nil then instance.BackgroundColor3 = base.BackgroundColor3 end
+					if base.BackgroundTransparency ~= nil then instance.BackgroundTransparency = base.BackgroundTransparency end
+				end
+				if instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox") then
+					if base.TextColor3 ~= nil then instance.TextColor3 = base.TextColor3 end
+					if base.TextTransparency ~= nil then instance.TextTransparency = base.TextTransparency end
+					if base.Font ~= nil then instance.Font = base.Font end
+					if base.TextSize ~= nil then instance.TextSize = base.TextSize end
+				end
+				if instance:IsA("ImageLabel") or instance:IsA("ImageButton") then
+					if base.ImageColor3 ~= nil then instance.ImageColor3 = base.ImageColor3 end
+					if base.ImageTransparency ~= nil then instance.ImageTransparency = base.ImageTransparency end
+				end
+				if instance:IsA("UIStroke") then
+					if base.Color ~= nil then instance.Color = base.Color end
+					if base.Transparency ~= nil then instance.Transparency = base.Transparency end
+					if base.Thickness ~= nil then instance.Thickness = base.Thickness end
+				end
+				if instance:IsA("UICorner") and base.CornerRadius ~= nil then
+					instance.CornerRadius = base.CornerRadius
+				end
+			end
+
+			-- Capture only the roots here. Descendants are captured lazily immediately before
+			-- their first custom-theme mutation, preserving the exact original template.
+			captureThemeBase(newWindow)
+			captureThemeBase(newFloatingIcon)
+			if newWindow:FindFirstChild("UICorner") then captureThemeBase(newWindow.UICorner) end
+
+			local function restoreOriginalUI()
+				if themeDestroyed then return end
+				for instance in pairs(themeBase) do
+					restoreThemeObject(instance)
+				end
+				backgroundLayer.Visible = false
+				backgroundLayer.Image = ""
+				backgroundLayer.ImageTransparency = 1
+				liquidGradient.Parent = nil
+				liquidStroke.Transparency = 1
+				uiScale.Scale = 1
+				floatingScale.Scale = 1
+				-- Original floating button text visibility is part of its captured state.
+				restoreThemeObject(newFloatingIcon)
+				TweenConfigs.Global.Duration = BASE_TWEEN.Global
+				TweenConfigs.Notification.Duration = BASE_TWEEN.Notification
+				TweenConfigs.PopupOpen.Duration = BASE_TWEEN.PopupOpen
+				TweenConfigs.PopupClose.Duration = BASE_TWEEN.PopupClose
+				liquidBlur.Size = 0
+				liquidBlur.Enabled = false
+			end
+
 			local function isAccentColor(color)
 				if typeof(color) ~= "Color3" then return false end
 				local h, s, v = color:ToHSV()
@@ -3509,6 +3576,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 			end
 
 			local function applyThemeToObject(instance)
+				if not UISettings.Enabled then return end
 				if not instance or not instance.Parent then return end
 				if instance == backgroundLayer or instance == liquidGradient or instance == liquidStroke or instance == uiScale or instance == floatingScale then return end
 				if string.sub(instance.Name, 1, 15) == "NgotStudioTheme" or instance.Name == "NgotStudioColorPreview" then return end
@@ -3579,6 +3647,10 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 			local function applyUITheme()
 				if themeDestroyed or not newWindow or not newWindow.Parent then return end
+				if not UISettings.Enabled then
+					restoreOriginalUI()
+					return
+				end
 				local liquid = UISettings.BackgroundMode == "Liquid Glass"
 				local imageMode = UISettings.BackgroundMode == "Image"
 				local rootAlpha = 1 - (UISettings.WindowOpacity / 100)
@@ -3664,6 +3736,10 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 			end
 
 			local function setUISetting(key, value)
+				-- Element constructors invoke callbacks with their initial values. While the
+				-- Settings tab is being built/synced those callbacks must be inert.
+				if settingsBuilding then return end
+				UISettings.Enabled = true
 				if not settingsBuilding then
 					UISettings.Preset = "Custom"
 					if settingsControls.Preset and type(settingsControls.Preset.Select) == "function" then
@@ -3683,7 +3759,17 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 			local function applyPreset(name, save)
 				name = tostring(name or "Default")
+				if name == "Default" then
+					for key, value in pairs(UI_DEFAULTS) do UISettings[key] = value end
+					UISettings.Enabled = false
+					UISettings.Preset = "Default"
+					restoreOriginalUI()
+					syncSettingsControls()
+					if save ~= false then queueUISettingsSave() end
+					return true
+				end
 				if name == "Custom" then
+					UISettings.Enabled = true
 					UISettings.Preset = "Custom"
 					if save ~= false then queueUISettingsSave() end
 					return true
@@ -3691,6 +3777,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				local preset = UI_PRESETS[name]
 				if not preset then return false end
 				for key, value in pairs(UI_DEFAULTS) do UISettings[key] = value end
+				UISettings.Enabled = true
 				for key, value in pairs(preset) do UISettings[key] = value end
 				UISettings.Preset = name
 				applyUITheme()
@@ -3706,6 +3793,11 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 			function Window:SetUISettings(settings, save)
 				mergeUISettings(settings)
 				UISettings.Preset = type(settings) == "table" and tostring(settings.Preset or "Custom") or "Custom"
+				if UISettings.Preset == "Default" or (type(settings) == "table" and settings.Enabled == false) then
+					UISettings.Enabled = false
+				else
+					UISettings.Enabled = true
+				end
 				applyUITheme()
 				syncSettingsControls()
 				if save ~= false then queueUISettingsSave() end
@@ -3714,6 +3806,10 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 			function Window:ApplyUIPreset(name, save)
 				return applyPreset(name, save)
+			end
+
+			function Window:UseOriginalUI(save)
+				return applyPreset("Default", save)
 			end
 
 			function Window:GetUIPresets()
@@ -3739,6 +3835,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				if not ok or type(decoded) ~= "table" then return false, tostring(decoded) end
 				mergeUISettings(decoded.UISettings or decoded)
 				UISettings.Preset = "Custom"
+				UISettings.Enabled = true
 				applyUITheme()
 				syncSettingsControls()
 				if save ~= false then storeUISettings(true) end
@@ -3747,6 +3844,8 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 			function Window:ResetUISettings(save)
 				for key, value in pairs(UI_DEFAULTS) do UISettings[key] = value end
+				UISettings.Enabled = false
+				UISettings.Preset = "Default"
 				applyUITheme()
 				syncSettingsControls()
 				if save ~= false then storeUISettings(true) end
@@ -3774,6 +3873,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				if type(profile) ~= "table" then return false, "Profile not found" end
 				mergeUISettings(profile)
 				UISettings.Preset = tostring(profile.Preset or "Custom")
+				UISettings.Enabled = profile.Enabled == true or UISettings.Preset ~= "Default"
 				applyUITheme()
 				syncSettingsControls()
 				if save ~= false then storeUISettings(true) end
@@ -3801,7 +3901,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 			local themeDescendantConnection = newWindow.DescendantAdded:Connect(function(descendant)
 				task.defer(function()
-					if not themeDestroyed and descendant and descendant.Parent then
+					if UISettings.Enabled and not themeDestroyed and descendant and descendant.Parent then
 						applyThemeToObject(descendant)
 					end
 				end)
@@ -3809,7 +3909,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 			local themeVisibilityConnection = newWindow:GetPropertyChangedSignal("Visible"):Connect(function()
 				if liquidBlur then
-					liquidBlur.Enabled = UISettings.BackgroundMode == "Liquid Glass" and UISettings.Blur > 0 and newWindow.Visible
+					liquidBlur.Enabled = UISettings.Enabled and UISettings.BackgroundMode == "Liquid Glass" and UISettings.Blur > 0 and newWindow.Visible
 				end
 			end)
 
@@ -6335,7 +6435,12 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 					Tween(newWindow, {Size = oldWindowSizeMaximize}, TweenConfigs.Global)
 					Tween(newWindow, {Position = oldWindowPositionMaximize}, TweenConfigs.Global)
 
-					Tween(newWindow.UICorner, {CornerRadius = UDim.new(0, UISettings.CornerRadius)}, TweenConfigs.Global)
+					if UISettings.Enabled then
+						Tween(newWindow.UICorner, {CornerRadius = UDim.new(0, UISettings.CornerRadius)}, TweenConfigs.Global)
+					else
+						local originalCorner = themeBase[newWindow.UICorner] and themeBase[newWindow.UICorner].CornerRadius
+						Tween(newWindow.UICorner, {CornerRadius = originalCorner or UDim.new(0, 10)}, TweenConfigs.Global)
+					end
 
 					maximizedWindow = false
 				end
