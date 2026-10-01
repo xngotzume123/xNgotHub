@@ -2992,6 +2992,14 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				if not allowResizing then resizing = false end
 			end
 
+			function funcs:SetMinSize(size)
+				if typeof(size) == "Vector2" then minSize = size end
+			end
+
+			function funcs:SetMaxSize(size)
+				if typeof(size) == "Vector2" then maxSize = size end
+			end
+
 			function funcs:Destroy()
 				if destroyed then return end
 				destroyed = true
@@ -3334,12 +3342,26 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				return baseFont
 			end
 
+			-- Preserve the exact CreateWindow size as the source of truth for Default/Reset.
+			-- Width/Height customization changes only the window dimensions; it never
+			-- changes font, colors, cards, spacing, radius, opacity, or any other style.
+			local originalWindowSize = Window.Size
+			local originalWindowWidth = tonumber(Window.Size.X.Offset) or 0
+			local originalWindowHeight = tonumber(Window.Size.Y.Offset) or 0
+			if originalWindowWidth <= 0 then originalWindowWidth = math.max(420, math.floor(newWindow.AbsoluteSize.X + 0.5)) end
+			if originalWindowHeight <= 0 then originalWindowHeight = math.max(300, math.floor(newWindow.AbsoluteSize.Y + 0.5)) end
+			originalWindowWidth = math.clamp(originalWindowWidth, 420, 1000)
+			originalWindowHeight = math.clamp(originalWindowHeight, 300, 800)
+			local windowSizeRuntimeSetter = nil
+
 			local UI_DEFAULTS = {
 				Enabled = false,
 				Preset = "Default",
 				Font = "Original",
 				TextScale = 1,
 				UIScale = 1,
+				WindowWidth = originalWindowWidth,
+				WindowHeight = originalWindowHeight,
 				WindowOpacity = 100,
 				BoxOpacity = 100,
 				BackgroundMode = "Color",
@@ -3438,6 +3460,8 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 					Font = settings.Font,
 					TextScale = settings.TextScale,
 					UIScale = settings.UIScale,
+					WindowWidth = settings.WindowWidth,
+					WindowHeight = settings.WindowHeight,
 					WindowOpacity = settings.WindowOpacity,
 					BoxOpacity = settings.BoxOpacity,
 					BackgroundMode = settings.BackgroundMode,
@@ -3465,6 +3489,8 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				if type(source.Font) == "string" then UISettings.Font = normalizeFontSelection(source.Font) end
 				UISettings.TextScale = clampNumber(source.TextScale, 0.7, 1.5, UISettings.TextScale)
 				UISettings.UIScale = clampNumber(source.UIScale, 0.65, 1.5, UISettings.UIScale)
+				UISettings.WindowWidth = clampNumber(source.WindowWidth, 420, 1000, UISettings.WindowWidth)
+				UISettings.WindowHeight = clampNumber(source.WindowHeight, 300, 800, UISettings.WindowHeight)
 				UISettings.WindowOpacity = clampNumber(source.WindowOpacity, 15, 100, UISettings.WindowOpacity)
 				UISettings.BoxOpacity = clampNumber(source.BoxOpacity, 10, 100, UISettings.BoxOpacity)
 				if type(source.BackgroundMode) == "string" then UISettings.BackgroundMode = source.BackgroundMode end
@@ -3603,8 +3629,37 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 			captureThemeBase(newFloatingIcon)
 			if newWindow:FindFirstChild("UICorner") then captureThemeBase(newWindow.UICorner) end
 
+			local function getDesiredWindowSize()
+				if not UIOverrides.WindowWidth and not UIOverrides.WindowHeight then
+					return originalWindowSize
+				end
+				local width = UIOverrides.WindowWidth and UISettings.WindowWidth or originalWindowWidth
+				local height = UIOverrides.WindowHeight and UISettings.WindowHeight or originalWindowHeight
+				return UDim2.fromOffset(
+					math.floor(math.clamp(tonumber(width) or originalWindowWidth, 420, 1000) + 0.5),
+					math.floor(math.clamp(tonumber(height) or originalWindowHeight, 300, 800) + 0.5)
+				)
+			end
+
+			local function applyWindowSizeOverrides()
+				local desired = getDesiredWindowSize()
+				Window.Size = desired
+				if type(windowSizeRuntimeSetter) == "function" then
+					windowSizeRuntimeSetter(desired)
+				elseif newWindow and newWindow.Parent then
+					newWindow.Size = desired
+				end
+				return desired
+			end
+
 			local function restoreOriginalUI()
 				if themeDestroyed then return end
+				Window.Size = originalWindowSize
+				if type(windowSizeRuntimeSetter) == "function" then
+					windowSizeRuntimeSetter(originalWindowSize)
+				elseif newWindow and newWindow.Parent then
+					newWindow.Size = originalWindowSize
+				end
 				for instance in pairs(themeBase) do
 					restoreThemeObject(instance)
 				end
@@ -3634,7 +3689,9 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 			local function restoreOverrideKey(key)
 				key = tostring(key or "")
 
-				if key == "BackgroundColor" then
+				if key == "WindowWidth" or key == "WindowHeight" then
+					applyWindowSizeOverrides()
+				elseif key == "BackgroundColor" then
 					local base = themeBase[newWindow]
 					if base and base.BackgroundColor3 ~= nil then newWindow.BackgroundColor3 = base.BackgroundColor3 end
 				elseif key == "WindowOpacity" then
@@ -3787,6 +3844,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				local liquid = UIOverrides.BackgroundMode and UISettings.BackgroundMode == "Liquid Glass"
 				local imageMode = UIOverrides.BackgroundMode and UISettings.BackgroundMode == "Image"
 
+				if UIOverrides.WindowWidth or UIOverrides.WindowHeight then applyWindowSizeOverrides() end
 				if UIOverrides.BackgroundColor then newWindow.BackgroundColor3 = UISettings.BackgroundColor end
 				if UIOverrides.WindowOpacity then
 					local rootBase = captureThemeBase(newWindow)
@@ -3945,6 +4003,40 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				syncSettingsControls()
 				if save ~= false then queueUISettingsSave() end
 				return true
+			end
+
+			function Window:SetUISize(width, height, save)
+				width = math.floor(math.clamp(tonumber(width) or UISettings.WindowWidth, 420, 1000) + 0.5)
+				height = math.floor(math.clamp(tonumber(height) or UISettings.WindowHeight, 300, 800) + 0.5)
+				restoreOverrideKey("WindowWidth")
+				restoreOverrideKey("WindowHeight")
+				UISettings.WindowWidth = width
+				UISettings.WindowHeight = height
+				setOverride("WindowWidth", width ~= originalWindowWidth)
+				setOverride("WindowHeight", height ~= originalWindowHeight)
+				UISettings.Preset = hasUIOverrides() and "Custom" or "Default"
+				applyWindowSizeOverrides()
+				syncSettingsControls()
+				if save ~= false then queueUISettingsSave() end
+				return Window.Size
+			end
+
+			function Window:GetUISize()
+				local size = getDesiredWindowSize()
+				return size, UISettings.WindowWidth, UISettings.WindowHeight
+			end
+
+			function Window:ResetUISize(save)
+				UIOverrides.WindowWidth = nil
+				UIOverrides.WindowHeight = nil
+				UISettings.WindowWidth = originalWindowWidth
+				UISettings.WindowHeight = originalWindowHeight
+				UISettings.Enabled = hasUIOverrides()
+				UISettings.Preset = UISettings.Enabled and "Custom" or "Default"
+				applyWindowSizeOverrides()
+				syncSettingsControls()
+				if save ~= false then queueUISettingsSave() end
+				return Window.Size
 			end
 
 			function Window:GetUISettings()
@@ -6473,8 +6565,8 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 			local windowResizable = Resizable(
 				resizeHandle,
 				newWindow,
-				Vector2.new(Window.Size.X.Offset, Window.Size.Y.Offset), -- min = size gốc
-				Vector2.new(1000, 800) -- max
+				Vector2.new(420, 300),
+				Vector2.new(1000, 800)
 			)
 
 			newWindow.Visible = true
@@ -6483,6 +6575,17 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 			local windowstate = newWindow.Visible
 			local timeout = false
 			local windowDestroyed = false
+
+			windowSizeRuntimeSetter = function(size)
+				if typeof(size) ~= "UDim2" then return end
+				Window.Size = size
+				oldWindowSize = size
+				if maximizedWindow then
+					oldWindowSizeMaximize = size
+				elseif windowstate and newWindow and newWindow.Parent then
+					newWindow.Size = size
+				end
+			end
 			local function ToggleWindow(state)
 				if windowDestroyed then return end
 				if state == true then
@@ -6718,11 +6821,49 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				})
 
 				settingsControls.UIScale = SettingsTab:Slider({
-					Title = "UI Scale", Desc = "Scale the entire UI.", Step = 0.05,
+					Title = "UI Scale (Zoom)", Desc = "Zoom the whole UI without changing the saved window width/height.", Step = 0.05,
 					Value = { Min = 0.65, Max = 1.5, Default = UISettings.UIScale },
 					Callback = function(value) setUISetting("UIScale", value) end,
 				})
 
+				SettingsTab:Section({ Title = "Window Size", Default = true })
+				settingsControls.WindowWidth = SettingsTab:Slider({
+					Title = "Window Width",
+					Desc = "Changes only the window width. Original layout/style is preserved.",
+					Step = 10,
+					Value = { Min = 420, Max = 1000, Default = UISettings.WindowWidth },
+					Callback = function(value)
+						if settingsBuilding then return end
+						value = math.floor((tonumber(value) or originalWindowWidth) + 0.5)
+						if value == originalWindowWidth then
+							Window:ClearUIOverride("WindowWidth", true)
+						else
+							setUISetting("WindowWidth", value)
+						end
+					end,
+				})
+				settingsControls.WindowHeight = SettingsTab:Slider({
+					Title = "Window Height",
+					Desc = "Changes only the window height. Original layout/style is preserved.",
+					Step = 10,
+					Value = { Min = 300, Max = 800, Default = UISettings.WindowHeight },
+					Callback = function(value)
+						if settingsBuilding then return end
+						value = math.floor((tonumber(value) or originalWindowHeight) + 0.5)
+						if value == originalWindowHeight then
+							Window:ClearUIOverride("WindowHeight", true)
+						else
+							setUISetting("WindowHeight", value)
+						end
+					end,
+				})
+				SettingsTab:Button({
+					Title = "Reset Window Size",
+					Desc = "Restore the exact Size passed to CreateWindow without resetting other customizations.",
+					Callback = function() Window:ResetUISize(true) end,
+				})
+
+				SettingsTab:Section({ Title = "Theme Details", Default = true })
 				settingsControls.CornerRadius = SettingsTab:Slider({
 					Title = "Corner Radius", Desc = "Global rounded corner amount.", Step = 1,
 					Value = { Min = 0, Max = 28, Default = UISettings.CornerRadius },
@@ -6939,6 +7080,8 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 					setControl("Font", "Select", UISettings.Font)
 					setControl("TextScale", "Set", UISettings.TextScale)
 					setControl("UIScale", "Set", UISettings.UIScale)
+					setControl("WindowWidth", "Set", UISettings.WindowWidth)
+					setControl("WindowHeight", "Set", UISettings.WindowHeight)
 					setControl("CornerRadius", "Set", UISettings.CornerRadius)
 					setControl("AccentColor", "Set", UISettings.AccentColor)
 					setControl("TextColor", "Set", UISettings.TextColor)
