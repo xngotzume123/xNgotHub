@@ -3287,16 +3287,57 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				GothamBold = Enum.Font.GothamBold,
 				SourceSans = Enum.Font.SourceSans,
 				SourceSansSemibold = Enum.Font.SourceSansSemibold,
+				SourceSansBold = Enum.Font.SourceSansBold,
 				Arial = Enum.Font.Arial,
+				ArialBold = Enum.Font.ArialBold,
 				Code = Enum.Font.Code,
 				Cartoon = Enum.Font.Cartoon,
 				SciFi = Enum.Font.SciFi,
 			}
 
+			-- Font customization changes only the family while preserving the original
+			-- Regular / Medium / Bold hierarchy of every text object. This keeps the
+			-- original NgotStudio visual rhythm instead of making every label the same weight.
+			local function normalizeFontSelection(value)
+				value = tostring(value or "Original")
+				if value == "GothamMedium" or value == "GothamBold" then return "Gotham" end
+				if value == "SourceSansSemibold" or value == "SourceSansBold" then return "SourceSans" end
+				if value == "ArialBold" then return "Arial" end
+				if value == "Original" or value == "Gotham" or value == "SourceSans" or value == "Arial" or value == "Code" or value == "Cartoon" or value == "SciFi" then
+					return value
+				end
+				return "Original"
+			end
+
+			local function fontForBase(baseFont, family)
+				family = normalizeFontSelection(family)
+				if family == "Original" then return baseFont end
+				if family == "Code" or family == "Cartoon" or family == "SciFi" then
+					return FONT_MAP[family] or baseFont
+				end
+
+				local baseName = tostring(baseFont or "")
+				local bold = string.find(baseName, "Bold", 1, true) ~= nil or string.find(baseName, "Black", 1, true) ~= nil
+				local medium = bold or string.find(baseName, "Medium", 1, true) ~= nil or string.find(baseName, "Semibold", 1, true) ~= nil
+
+				if family == "Gotham" then
+					if bold then return Enum.Font.GothamBold end
+					if medium then return Enum.Font.GothamMedium end
+					return Enum.Font.Gotham
+				elseif family == "SourceSans" then
+					if bold then return Enum.Font.SourceSansBold end
+					if medium then return Enum.Font.SourceSansSemibold end
+					return Enum.Font.SourceSans
+				elseif family == "Arial" then
+					return bold and Enum.Font.ArialBold or Enum.Font.Arial
+				end
+				return baseFont
+			end
+
 			local UI_DEFAULTS = {
 				Enabled = false,
 				Preset = "Default",
-				Font = "Gotham",
+				Font = "Original",
 				TextScale = 1,
 				UIScale = 1,
 				WindowOpacity = 100,
@@ -3365,10 +3406,34 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 			end
 
 			local UISettings = copySettings(UI_DEFAULTS)
+			-- Every customization is opt-in per property. Editing one setting must not
+			-- repaint unrelated parts of the original NgotStudio UI/UX.
+			local UIOverrides = {}
+
+			local function copyOverrides(source)
+				local result = {}
+				if type(source) == "table" then
+					for key, value in pairs(source) do
+						if value == true then result[key] = true end
+					end
+				end
+				return result
+			end
+
+			local function hasUIOverrides()
+				return next(UIOverrides) ~= nil
+			end
+
+			local function setOverride(key, enabled)
+				if enabled == false then UIOverrides[key] = nil else UIOverrides[key] = true end
+				UISettings.Enabled = hasUIOverrides()
+			end
 
 			local function serializeUISettings(settings)
 				return {
-					Enabled = settings.Enabled == true,
+					Enabled = settings.Enabled == true and hasUIOverrides(),
+					SettingsVersion = 3,
+					Overrides = copyOverrides(UIOverrides),
 					Preset = settings.Preset,
 					Font = settings.Font,
 					TextScale = settings.TextScale,
@@ -3397,7 +3462,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				if type(source) ~= "table" then return end
 				if source.Enabled ~= nil then UISettings.Enabled = source.Enabled == true end
 				if type(source.Preset) == "string" then UISettings.Preset = source.Preset end
-				if type(source.Font) == "string" and FONT_MAP[source.Font] then UISettings.Font = source.Font end
+				if type(source.Font) == "string" then UISettings.Font = normalizeFontSelection(source.Font) end
 				UISettings.TextScale = clampNumber(source.TextScale, 0.7, 1.5, UISettings.TextScale)
 				UISettings.UIScale = clampNumber(source.UIScale, 0.65, 1.5, UISettings.UIScale)
 				UISettings.WindowOpacity = clampNumber(source.WindowOpacity, 15, 100, UISettings.WindowOpacity)
@@ -3420,12 +3485,15 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 			end
 
 			local savedUISettings = CONFIG.__NgotUISettings
-			-- Backward-compatibility safety: old Settings Ui builds did not store Enabled and
-			-- repainted the original UI on startup. Only restore a theme when it was saved
-			-- explicitly by this non-destructive edition.
-			if type(savedUISettings) == "table" and savedUISettings.Enabled == true then
+			-- v3 stores only explicit per-property overrides. Older theme configs are
+			-- intentionally ignored because they could repaint unrelated UI properties.
+			if type(savedUISettings) == "table" and savedUISettings.SettingsVersion == 3 and type(savedUISettings.Overrides) == "table" then
 				mergeUISettings(savedUISettings)
+				UIOverrides = copyOverrides(savedUISettings.Overrides)
+				UISettings.Enabled = hasUIOverrides()
+				if not UISettings.Enabled then UISettings.Preset = "Default" end
 			else
+				UIOverrides = {}
 				UISettings.Enabled = false
 				UISettings.Preset = "Default"
 			end
@@ -3470,6 +3538,8 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 			local floatingScale = newFloatingIcon:FindFirstChild("NgotStudioThemeScale") or Instance.new("UIScale")
 			floatingScale.Name = "NgotStudioThemeScale"
 			floatingScale.Parent = newFloatingIcon
+			local floatingText = newFloatingIcon:FindFirstChild("TextLabel")
+			local floatingTextOriginalVisible = floatingText and floatingText.Visible or nil
 
 			local BASE_TWEEN = { Global = 0.25, Notification = 0.5, PopupOpen = 0.4, PopupClose = 0.4 }
 
@@ -3545,7 +3615,9 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				liquidStroke.Transparency = 1
 				uiScale.Scale = 1
 				floatingScale.Scale = 1
-				-- Original floating button text visibility is part of its captured state.
+				if floatingText and floatingTextOriginalVisible ~= nil then
+					floatingText.Visible = floatingTextOriginalVisible
+				end
 				restoreThemeObject(newFloatingIcon)
 				TweenConfigs.Global.Duration = BASE_TWEEN.Global
 				TweenConfigs.Notification.Duration = BASE_TWEEN.Notification
@@ -3553,6 +3625,75 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				TweenConfigs.PopupClose.Duration = BASE_TWEEN.PopupClose
 				liquidBlur.Size = 0
 				liquidBlur.Enabled = false
+			end
+
+
+			-- Restore only the property controlled by one setting. This is the key rule
+			-- that keeps customizations independent: changing Font never restores/repaints
+			-- strokes, cards, colors, opacity, radius, etc.
+			local function restoreOverrideKey(key)
+				key = tostring(key or "")
+
+				if key == "BackgroundColor" then
+					local base = themeBase[newWindow]
+					if base and base.BackgroundColor3 ~= nil then newWindow.BackgroundColor3 = base.BackgroundColor3 end
+				elseif key == "WindowOpacity" then
+					local base = themeBase[newWindow]
+					if base and base.BackgroundTransparency ~= nil then newWindow.BackgroundTransparency = base.BackgroundTransparency end
+				elseif key == "BackgroundMode" then
+					local base = themeBase[newWindow]
+					if base and base.BackgroundTransparency ~= nil then newWindow.BackgroundTransparency = base.BackgroundTransparency end
+					backgroundLayer.Visible = false
+					backgroundLayer.Image = ""
+					liquidGradient.Parent = nil
+					liquidStroke.Transparency = 1
+					liquidBlur.Size = 0
+					liquidBlur.Enabled = false
+				elseif key == "BackgroundImage" then
+					backgroundLayer.Image = ""
+				elseif key == "BackgroundImageTransparency" then
+					backgroundLayer.ImageTransparency = 1
+				elseif key == "BackgroundImageScale" then
+					backgroundLayer.ScaleType = Enum.ScaleType.Crop
+				elseif key == "UIScale" then
+					uiScale.Scale = 1
+					floatingScale.Scale = 1
+				elseif key == "ShowFloatingButtonText" then
+					if floatingText and floatingTextOriginalVisible ~= nil then floatingText.Visible = floatingTextOriginalVisible end
+				elseif key == "AnimationSpeed" or key == "ReduceMotion" then
+					TweenConfigs.Global.Duration = BASE_TWEEN.Global
+					TweenConfigs.Notification.Duration = BASE_TWEEN.Notification
+					TweenConfigs.PopupOpen.Duration = BASE_TWEEN.PopupOpen
+					TweenConfigs.PopupClose.Duration = BASE_TWEEN.PopupClose
+				elseif key == "Blur" then
+					liquidBlur.Size = 0
+					liquidBlur.Enabled = false
+				end
+
+				for instance, base in pairs(themeBase) do
+					if instance and instance.Parent and base then
+						if key == "Font" and (instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox")) then
+							if base.Font ~= nil then instance.Font = base.Font end
+						elseif key == "TextScale" and (instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox")) then
+							if base.TextSize ~= nil then instance.TextSize = base.TextSize end
+						elseif key == "SurfaceColor" and instance:IsA("GuiObject") and instance ~= newWindow then
+							if base.BackgroundColor3 ~= nil then instance.BackgroundColor3 = base.BackgroundColor3 end
+						elseif key == "AccentColor" then
+							if instance:IsA("GuiObject") and instance ~= newWindow and base.BackgroundColor3 ~= nil then instance.BackgroundColor3 = base.BackgroundColor3 end
+							if (instance:IsA("ImageLabel") or instance:IsA("ImageButton")) and base.ImageColor3 ~= nil then instance.ImageColor3 = base.ImageColor3 end
+							if instance:IsA("UIStroke") and base.Color ~= nil then instance.Color = base.Color end
+						elseif key == "TextColor" then
+							if (instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox")) and base.TextColor3 ~= nil then instance.TextColor3 = base.TextColor3 end
+							if (instance:IsA("ImageLabel") or instance:IsA("ImageButton")) and base.ImageColor3 ~= nil then instance.ImageColor3 = base.ImageColor3 end
+						elseif key == "MutedTextColor" and (instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox")) then
+							if base.TextColor3 ~= nil then instance.TextColor3 = base.TextColor3 end
+						elseif key == "BoxOpacity" and instance:IsA("GuiObject") and instance ~= newWindow then
+							if base.BackgroundTransparency ~= nil then instance.BackgroundTransparency = base.BackgroundTransparency end
+						elseif key == "CornerRadius" and instance:IsA("UICorner") then
+							if base.CornerRadius ~= nil then instance.CornerRadius = base.CornerRadius end
+						end
+					end
+				end
 			end
 
 			local function isAccentColor(color)
@@ -3575,135 +3716,140 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				return value
 			end
 
+			local function blendColor(baseColor, targetColor, amount)
+				if typeof(baseColor) ~= "Color3" or typeof(targetColor) ~= "Color3" then return baseColor end
+				return baseColor:Lerp(targetColor, math.clamp(amount or 0.65, 0, 1))
+			end
+
+			local function opacityFromBase(baseTransparency, opacityPercent)
+				baseTransparency = tonumber(baseTransparency) or 0
+				local opacity = math.clamp((tonumber(opacityPercent) or 100) / 100, 0, 1)
+				return 1 - ((1 - baseTransparency) * opacity)
+			end
+
 			local function applyThemeToObject(instance)
-				if not UISettings.Enabled then return end
+				if not UISettings.Enabled or not hasUIOverrides() then return end
 				if not instance or not instance.Parent then return end
 				if instance == backgroundLayer or instance == liquidGradient or instance == liquidStroke or instance == uiScale or instance == floatingScale then return end
 				if string.sub(instance.Name, 1, 15) == "NgotStudioTheme" or instance.Name == "NgotStudioColorPreview" then return end
+
 				local base = captureThemeBase(instance)
 				local lowerName = string.lower(instance.Name or "")
-				local liquid = UISettings.BackgroundMode == "Liquid Glass"
-				local surface = UISettings.SurfaceColor
-				local panelAlpha = 1 - (UISettings.BoxOpacity / 100)
-				if liquid then
-					local strength = UISettings.LiquidGlassStrength / 100
-					panelAlpha = math.max(panelAlpha, 0.22 + 0.38 * strength)
-				end
 
+				-- Only explicitly enabled overrides are allowed to mutate each property.
 				if instance:IsA("GuiObject") and instance ~= newWindow then
-					if base.BackgroundTransparency and base.BackgroundTransparency < 0.98 then
-						if string.find(lowerName, "overlay", 1, true) then
-							instance.BackgroundColor3 = base.BackgroundColor3
-							instance.BackgroundTransparency = base.BackgroundTransparency
-						elseif isAccentColor(base.BackgroundColor3) or lowerName == "bar" then
+					if base.BackgroundTransparency ~= nil and base.BackgroundTransparency < 0.98 then
+						if UIOverrides.SurfaceColor and not string.find(lowerName, "overlay", 1, true) and not isAccentColor(base.BackgroundColor3) then
+							instance.BackgroundColor3 = blendColor(base.BackgroundColor3, UISettings.SurfaceColor, 0.62)
+						end
+						if UIOverrides.AccentColor and isAccentColor(base.BackgroundColor3) then
 							instance.BackgroundColor3 = UISettings.AccentColor
-							instance.BackgroundTransparency = math.max(base.BackgroundTransparency, panelAlpha * 0.35)
-						else
-							instance.BackgroundColor3 = surface
-							instance.BackgroundTransparency = math.max(base.BackgroundTransparency, panelAlpha)
+						end
+						if UIOverrides.BoxOpacity and not string.find(lowerName, "overlay", 1, true) then
+							instance.BackgroundTransparency = opacityFromBase(base.BackgroundTransparency, UISettings.BoxOpacity)
 						end
 					end
 				end
 
 				if instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox") then
-					instance.Font = FONT_MAP[UISettings.Font] or Enum.Font.Gotham
-					instance.TextSize = math.max(8, (base.TextSize or instance.TextSize) * UISettings.TextScale)
-					if (base.TextTransparency or 0) >= 0.28 then
-						instance.TextColor3 = UISettings.MutedTextColor
-					else
+					if UIOverrides.Font then instance.Font = fontForBase(base.Font or instance.Font, UISettings.Font) end
+					if UIOverrides.TextScale then instance.TextSize = math.max(8, (base.TextSize or instance.TextSize) * UISettings.TextScale) end
+					if UIOverrides.TextColor and (base.TextTransparency or 0) < 0.28 then
 						instance.TextColor3 = UISettings.TextColor
+					elseif UIOverrides.MutedTextColor and (base.TextTransparency or 0) >= 0.28 then
+						instance.TextColor3 = UISettings.MutedTextColor
 					end
 				end
 
 				if instance:IsA("ImageLabel") or instance:IsA("ImageButton") then
-					if isAccentColor(base.ImageColor3) then
+					if UIOverrides.AccentColor and isAccentColor(base.ImageColor3) then
 						instance.ImageColor3 = UISettings.AccentColor
-					elseif base.ImageColor3 and base.ImageColor3.R > 0.45 and base.ImageColor3.G > 0.45 and base.ImageColor3.B > 0.45 then
-						instance.ImageColor3 = UISettings.TextColor
+					elseif UIOverrides.TextColor and base.ImageColor3 and base.ImageColor3.R > 0.45 and base.ImageColor3.G > 0.45 and base.ImageColor3.B > 0.45 then
+						instance.ImageColor3 = blendColor(base.ImageColor3, UISettings.TextColor, 0.75)
 					end
 				end
 
 				if instance:IsA("UIStroke") then
-					if isAccentColor(base.Color) then
-						instance.Color = UISettings.AccentColor
-					else
-						instance.Color = liquid and Color3.fromRGB(235, 242, 255) or UISettings.MutedTextColor
-					end
-					if liquid then
-						instance.Transparency = math.max(base.Transparency or 0, 0.55)
-					else
-						instance.Transparency = base.Transparency or instance.Transparency
-					end
+					if UIOverrides.AccentColor and isAccentColor(base.Color) then instance.Color = UISettings.AccentColor end
 				end
 
-				if instance:IsA("UICorner") and base.CornerRadius then
-					if base.CornerRadius.Scale >= 0.4 then
-						instance.CornerRadius = base.CornerRadius
-					else
-						instance.CornerRadius = UDim.new(0, UISettings.CornerRadius)
-					end
+				if instance:IsA("UICorner") and base.CornerRadius and UIOverrides.CornerRadius then
+					-- Pills/circles stay exactly as designed. Only normal card/control radii change.
+					if base.CornerRadius.Scale < 0.4 then instance.CornerRadius = UDim.new(0, UISettings.CornerRadius) end
 				end
 			end
 
 			local function applyUITheme()
 				if themeDestroyed or not newWindow or not newWindow.Parent then return end
-				if not UISettings.Enabled then
-					restoreOriginalUI()
-					return
+				UISettings.Enabled = hasUIOverrides()
+				if not UISettings.Enabled then return end
+
+				local liquid = UIOverrides.BackgroundMode and UISettings.BackgroundMode == "Liquid Glass"
+				local imageMode = UIOverrides.BackgroundMode and UISettings.BackgroundMode == "Image"
+
+				if UIOverrides.BackgroundColor then newWindow.BackgroundColor3 = UISettings.BackgroundColor end
+				if UIOverrides.WindowOpacity then
+					local rootBase = captureThemeBase(newWindow)
+					newWindow.BackgroundTransparency = opacityFromBase(rootBase.BackgroundTransparency, UISettings.WindowOpacity)
 				end
-				local liquid = UISettings.BackgroundMode == "Liquid Glass"
-				local imageMode = UISettings.BackgroundMode == "Image"
-				local rootAlpha = 1 - (UISettings.WindowOpacity / 100)
-				newWindow.BackgroundColor3 = UISettings.BackgroundColor
-				newWindow.BackgroundTransparency = imageMode and 1 or rootAlpha
-				backgroundCorner.CornerRadius = UDim.new(0, UISettings.CornerRadius)
 
-				backgroundLayer.Image = resolveBackgroundImage(UISettings.BackgroundImage)
-				backgroundLayer.ScaleType = imageScaleType(UISettings.BackgroundImageScale)
-				backgroundLayer.ImageTransparency = math.clamp(UISettings.BackgroundImageTransparency / 100, 0, 1)
-				backgroundLayer.Visible = imageMode and backgroundLayer.Image ~= ""
+				-- Background helpers affect only the window background. Controls/cards are not
+				-- restyled unless their own independent override is enabled.
+				backgroundLayer.Visible = false
+				liquidGradient.Parent = nil
+				liquidStroke.Transparency = 1
+				liquidBlur.Size = 0
+				liquidBlur.Enabled = false
 
-				if liquid then
+				if imageMode then
+					backgroundLayer.Image = resolveBackgroundImage(UISettings.BackgroundImage)
+					backgroundLayer.ScaleType = imageScaleType(UISettings.BackgroundImageScale)
+					backgroundLayer.ImageTransparency = math.clamp(UISettings.BackgroundImageTransparency / 100, 0, 1)
+					backgroundLayer.Visible = backgroundLayer.Image ~= ""
+					if backgroundLayer.Visible then newWindow.BackgroundTransparency = 1 end
+				elseif liquid then
+					local strength = math.clamp(UISettings.LiquidGlassStrength / 100, 0, 1)
+					local rootBase = captureThemeBase(newWindow)
+					newWindow.BackgroundTransparency = math.max(newWindow.BackgroundTransparency, opacityFromBase(rootBase.BackgroundTransparency, 94 - 18 * strength))
 					liquidGradient.Color = ColorSequence.new({
-						ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-						ColorSequenceKeypoint.new(0.48, UISettings.SurfaceColor),
-						ColorSequenceKeypoint.new(1, UISettings.AccentColor),
+						ColorSequenceKeypoint.new(0, Color3.fromRGB(255,255,255)),
+						ColorSequenceKeypoint.new(0.55, rootBase.BackgroundColor3 or Color3.fromRGB(37,40,47)),
+						ColorSequenceKeypoint.new(1, UIOverrides.AccentColor and UISettings.AccentColor or Color3.fromRGB(120,170,255)),
 					})
-					local strength = UISettings.LiquidGlassStrength / 100
 					liquidGradient.Transparency = NumberSequence.new({
-						NumberSequenceKeypoint.new(0, 0.65 + 0.2 * (1 - strength)),
-						NumberSequenceKeypoint.new(0.55, 0.82),
-						NumberSequenceKeypoint.new(1, 0.70),
+						NumberSequenceKeypoint.new(0, 0.90 - 0.10 * strength),
+						NumberSequenceKeypoint.new(0.55, 0.96),
+						NumberSequenceKeypoint.new(1, 0.91 - 0.08 * strength),
 					})
 					liquidGradient.Parent = newWindow
-					liquidStroke.Color = Color3.fromRGB(236, 243, 255)
-					liquidStroke.Transparency = math.clamp(0.72 - 0.25 * strength, 0.35, 0.8)
-				else
-					liquidGradient.Parent = nil
-					liquidStroke.Transparency = 1
+					liquidStroke.Color = Color3.fromRGB(236,243,255)
+					liquidStroke.Transparency = math.clamp(0.92 - 0.18 * strength, 0.68, 0.94)
+					if UIOverrides.Blur then
+						liquidBlur.Size = UISettings.Blur
+						liquidBlur.Enabled = UISettings.Blur > 0 and newWindow.Visible
+					end
 				end
 
-				uiScale.Scale = UISettings.UIScale
-				floatingScale.Scale = UISettings.UIScale
-				newFloatingIcon.TextLabel.Visible = UISettings.ShowFloatingButtonText
-
-				local speed = math.max(UISettings.AnimationSpeed, 0.2)
-				if UISettings.ReduceMotion then speed = 100 end
-				TweenConfigs.Global.Duration = math.max(0.01, BASE_TWEEN.Global / speed)
-				TweenConfigs.Notification.Duration = math.max(0.01, BASE_TWEEN.Notification / speed)
-				TweenConfigs.PopupOpen.Duration = math.max(0.01, BASE_TWEEN.PopupOpen / speed)
-				TweenConfigs.PopupClose.Duration = math.max(0.01, BASE_TWEEN.PopupClose / speed)
-
-				for _, descendant in ipairs(newWindow:GetDescendants()) do
-					applyThemeToObject(descendant)
+				if UIOverrides.UIScale then
+					uiScale.Scale = UISettings.UIScale
+					floatingScale.Scale = UISettings.UIScale
 				end
-				for _, descendant in ipairs(newFloatingIcon:GetDescendants()) do
-					applyThemeToObject(descendant)
+				if UIOverrides.ShowFloatingButtonText and floatingText then
+					floatingText.Visible = UISettings.ShowFloatingButtonText
 				end
+
+				if UIOverrides.AnimationSpeed or UIOverrides.ReduceMotion then
+					local speed = UIOverrides.AnimationSpeed and math.max(UISettings.AnimationSpeed, 0.2) or 1
+					if UIOverrides.ReduceMotion and UISettings.ReduceMotion then speed = 100 end
+					TweenConfigs.Global.Duration = math.max(0.01, BASE_TWEEN.Global / speed)
+					TweenConfigs.Notification.Duration = math.max(0.01, BASE_TWEEN.Notification / speed)
+					TweenConfigs.PopupOpen.Duration = math.max(0.01, BASE_TWEEN.PopupOpen / speed)
+					TweenConfigs.PopupClose.Duration = math.max(0.01, BASE_TWEEN.PopupClose / speed)
+				end
+
+				for _, descendant in ipairs(newWindow:GetDescendants()) do applyThemeToObject(descendant) end
+				for _, descendant in ipairs(newFloatingIcon:GetDescendants()) do applyThemeToObject(descendant) end
 				applyThemeToObject(newFloatingIcon)
-
-				liquidBlur.Size = UISettings.Blur
-				liquidBlur.Enabled = liquid and UISettings.Blur > 0 and newWindow.Visible
 			end
 
 			local function scheduleThemeApply()
@@ -3736,24 +3882,36 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 			end
 
 			local function setUISetting(key, value)
-				-- Element constructors invoke callbacks with their initial values. While the
-				-- Settings tab is being built/synced those callbacks must be inert.
 				if settingsBuilding then return end
-				UISettings.Enabled = true
-				if not settingsBuilding then
-					UISettings.Preset = "Custom"
-					if settingsControls.Preset and type(settingsControls.Preset.Select) == "function" then
-						settingsBuilding = true
-						pcall(settingsControls.Preset.Select, settingsControls.Preset, "Custom")
-						settingsBuilding = false
+				key = tostring(key or "")
+
+				-- Restore only this setting's property before applying its new value.
+				-- Every other active customization remains untouched.
+				restoreOverrideKey(key)
+
+				if key == "Font" then
+					value = normalizeFontSelection(value)
+					UISettings.Font = value
+					if value == "Original" then
+						setOverride(key, false)
+					else
+						setOverride(key, true)
 					end
-				end
-				if key == "BackgroundColor" or key == "SurfaceColor" or key == "AccentColor" or key == "TextColor" or key == "MutedTextColor" then
+				elseif key == "BackgroundColor" or key == "SurfaceColor" or key == "AccentColor" or key == "TextColor" or key == "MutedTextColor" then
 					UISettings[key] = colorFrom(value, UISettings[key])
+					setOverride(key, true)
 				else
 					UISettings[key] = value
+					setOverride(key, true)
 				end
-				scheduleThemeApply()
+
+				UISettings.Preset = hasUIOverrides() and "Custom" or "Default"
+				if settingsControls.Preset and type(settingsControls.Preset.Select) == "function" then
+					settingsBuilding = true
+					pcall(settingsControls.Preset.Select, settingsControls.Preset, UISettings.Preset)
+					settingsBuilding = false
+				end
+				applyUITheme()
 				queueUISettingsSave()
 			end
 
@@ -3761,6 +3919,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				name = tostring(name or "Default")
 				if name == "Default" then
 					for key, value in pairs(UI_DEFAULTS) do UISettings[key] = value end
+					UIOverrides = {}
 					UISettings.Enabled = false
 					UISettings.Preset = "Default"
 					restoreOriginalUI()
@@ -3769,16 +3928,18 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 					return true
 				end
 				if name == "Custom" then
-					UISettings.Enabled = true
+					UISettings.Enabled = hasUIOverrides()
 					UISettings.Preset = "Custom"
 					if save ~= false then queueUISettingsSave() end
 					return true
 				end
 				local preset = UI_PRESETS[name]
 				if not preset then return false end
+				restoreOriginalUI()
 				for key, value in pairs(UI_DEFAULTS) do UISettings[key] = value end
-				UISettings.Enabled = true
-				for key, value in pairs(preset) do UISettings[key] = value end
+				UIOverrides = {}
+				for key, value in pairs(preset) do UISettings[key] = value; UIOverrides[key] = true end
+				UISettings.Enabled = hasUIOverrides()
 				UISettings.Preset = name
 				applyUITheme()
 				syncSettingsControls()
@@ -3787,17 +3948,47 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 			end
 
 			function Window:GetUISettings()
-				return copySettings(UISettings)
+				local result = copySettings(UISettings)
+				result.Overrides = copyOverrides(UIOverrides)
+				return result
+			end
+
+			function Window:GetUIOverrides()
+				return copyOverrides(UIOverrides)
+			end
+
+			function Window:ClearUIOverride(key, save)
+				key = tostring(key or "")
+				UIOverrides[key] = nil
+				if UI_DEFAULTS[key] ~= nil then UISettings[key] = UI_DEFAULTS[key] end
+				restoreOverrideKey(key)
+				UISettings.Enabled = hasUIOverrides()
+				UISettings.Preset = UISettings.Enabled and "Custom" or "Default"
+				applyUITheme()
+				syncSettingsControls()
+				if save ~= false then queueUISettingsSave() end
+				return true
 			end
 
 			function Window:SetUISettings(settings, save)
-				mergeUISettings(settings)
-				UISettings.Preset = type(settings) == "table" and tostring(settings.Preset or "Custom") or "Custom"
-				if UISettings.Preset == "Default" or (type(settings) == "table" and settings.Enabled == false) then
-					UISettings.Enabled = false
-				else
-					UISettings.Enabled = true
+				if type(settings) ~= "table" then return Window:GetUISettings() end
+				if settings.Preset == "Default" or settings.Enabled == false then
+					applyPreset("Default", save)
+					return Window:GetUISettings()
 				end
+				restoreOriginalUI()
+				for key, value in pairs(UI_DEFAULTS) do UISettings[key] = value end
+				UIOverrides = {}
+				mergeUISettings(settings)
+				if type(settings.Overrides) == "table" then
+					UIOverrides = copyOverrides(settings.Overrides)
+				else
+					for key in pairs(settings) do
+						if UI_DEFAULTS[key] ~= nil and key ~= "Enabled" and key ~= "Preset" then UIOverrides[key] = true end
+					end
+				end
+				UISettings.Preset = tostring(settings.Preset or "Custom")
+				UISettings.Enabled = hasUIOverrides()
 				applyUITheme()
 				syncSettingsControls()
 				if save ~= false then queueUISettingsSave() end
@@ -3833,9 +4024,21 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				if type(json) ~= "string" or json == "" then return false, "Empty JSON" end
 				local ok, decoded = pcall(HttpService.JSONDecode, HttpService, json)
 				if not ok or type(decoded) ~= "table" then return false, tostring(decoded) end
-				mergeUISettings(decoded.UISettings or decoded)
+				local imported = decoded.UISettings or decoded
+				restoreOriginalUI()
+				for key, value in pairs(UI_DEFAULTS) do UISettings[key] = value end
+				UIOverrides = {}
+				mergeUISettings(imported)
+				if type(imported.Overrides) == "table" then
+					UIOverrides = copyOverrides(imported.Overrides)
+				else
+					UIOverrides = {}
+					for key in pairs(imported) do
+						if UI_DEFAULTS[key] ~= nil and key ~= "Enabled" and key ~= "Preset" then UIOverrides[key] = true end
+					end
+				end
 				UISettings.Preset = "Custom"
-				UISettings.Enabled = true
+				UISettings.Enabled = hasUIOverrides()
 				applyUITheme()
 				syncSettingsControls()
 				if save ~= false then storeUISettings(true) end
@@ -3843,10 +4046,11 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 			end
 
 			function Window:ResetUISettings(save)
+				restoreOriginalUI()
 				for key, value in pairs(UI_DEFAULTS) do UISettings[key] = value end
+				UIOverrides = {}
 				UISettings.Enabled = false
 				UISettings.Preset = "Default"
-				applyUITheme()
 				syncSettingsControls()
 				if save ~= false then storeUISettings(true) end
 				return Window:GetUISettings()
@@ -3871,9 +4075,14 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 			function Window:LoadUIProfile(name, save)
 				local profile = CONFIG.__NgotUIProfiles[tostring(name or "")]
 				if type(profile) ~= "table" then return false, "Profile not found" end
+				if profile.SettingsVersion ~= 3 then return false, "Legacy UI profile. Save it again with the current UI version." end
+				restoreOriginalUI()
+				for key, value in pairs(UI_DEFAULTS) do UISettings[key] = value end
+				UIOverrides = {}
 				mergeUISettings(profile)
-				UISettings.Preset = tostring(profile.Preset or "Custom")
-				UISettings.Enabled = profile.Enabled == true or UISettings.Preset ~= "Default"
+				UIOverrides = type(profile.Overrides) == "table" and copyOverrides(profile.Overrides) or {}
+				UISettings.Preset = tostring(profile.Preset or (hasUIOverrides() and "Custom" or "Default"))
+				UISettings.Enabled = hasUIOverrides()
 				applyUITheme()
 				syncSettingsControls()
 				if save ~= false then storeUISettings(true) end
@@ -3909,7 +4118,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 			local themeVisibilityConnection = newWindow:GetPropertyChangedSignal("Visible"):Connect(function()
 				if liquidBlur then
-					liquidBlur.Enabled = UISettings.Enabled and UISettings.BackgroundMode == "Liquid Glass" and UISettings.Blur > 0 and newWindow.Visible
+					liquidBlur.Enabled = UISettings.Enabled and UIOverrides.BackgroundMode and UISettings.BackgroundMode == "Liquid Glass" and UIOverrides.Blur and UISettings.Blur > 0 and newWindow.Visible
 				end
 			end)
 
@@ -6476,7 +6685,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 
 				SettingsTab:Paragraph({
 					Title = "UI / UX Customization",
-					Desc = "Customize theme, font, opacity, background, Liquid Glass, animation and saved UI profiles. Changes are applied live.",
+					Desc = "Customize only what you choose. The original NgotStudio layout, cards, spacing and controls stay unchanged.",
 				})
 
 				SettingsTab:Section({ Title = "Theme & Appearance", Default = true })
@@ -6484,7 +6693,7 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				local presetDropdown
 				presetDropdown = SettingsTab:Dropdown({
 					Title = "Theme Preset",
-					Desc = "Quick presets. Liquid Glass simulates the iOS 26 translucent glass style.",
+					Desc = "Default restores the exact original UI. Presets intentionally change multiple appearance settings; individual controls below change only themselves.",
 					Values = presetNames,
 					Value = table.find(presetNames, UISettings.Preset) and UISettings.Preset or "Default",
 					Callback = function(value)
@@ -6495,8 +6704,9 @@ NgotStudio_MODULES[NgotStudio["3e"]] = {
 				settingsControls.Preset = presetDropdown
 
 				settingsControls.Font = SettingsTab:Dropdown({
-					Title = "Font",
-					Values = { "Gotham", "GothamMedium", "GothamBold", "SourceSans", "SourceSansSemibold", "Arial", "Code", "Cartoon", "SciFi" },
+					Title = "Font Family",
+					Desc = "Changes only the font family and preserves the original Regular / Medium / Bold hierarchy.",
+					Values = { "Original", "Gotham", "SourceSans", "Arial", "Code", "Cartoon", "SciFi" },
 					Value = UISettings.Font,
 					Callback = function(value) setUISetting("Font", value) end,
 				})
