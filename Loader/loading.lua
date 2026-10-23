@@ -6,26 +6,31 @@ if not game:IsLoaded() then
 end
 
 local Environment = type(getgenv) == "function" and getgenv() or _G
-Environment.keyless = false
-Environment.Keyless = false
-local keylessSetting = Environment.keyless
-if type(keylessSetting) ~= "boolean" then
-    keylessSetting = Environment.Keyless
+local DEFAULT_KEYLESS = true
+
+local setting = Environment.keyless
+if type(setting) ~= "boolean" then
+    setting = Environment.Keyless
 end
-local KEYLESS = keylessSetting == true
+
+local KEYLESS
+if type(setting) == "boolean" then
+    KEYLESS = setting
+else
+    KEYLESS = DEFAULT_KEYLESS
+end
+
+Environment.keyless = KEYLESS
+Environment.Keyless = KEYLESS
 
 local API_URL = "https://api.xngotrouter.indevs.in"
 local Request = request or http_request or (syn and syn.request) or (http and http.request)
 
 local SCRIPT_GROUPS = {
-     {
-         PlaceIds = {107778070777162},
-         ScriptUrl = "https://raw.githubusercontent.com/xngotzume123/xNgotHub/refs/heads/main/Game/StealAnEgg.lua"
-     }
-    -- {
-    --     PlaceIds = {4444444444, 5555555555},
-    --     ScriptUrl = "https://your-domain.com/scripts/game-2.lua"
-    -- }
+    {
+        PlaceIds = {107778070777162},
+        ScriptUrl = "https://raw.githubusercontent.com/xngotzume123/xNgotHub/refs/heads/main/Game/StealAnEgg.lua"
+    }
 }
 
 local ROUTE_BY_PLACE_ID = {}
