@@ -1,0 +1,162 @@
+[
+  {
+    "name": "Chơi Như Tụi Mỹ",
+    "artist": "Andree Right Hand",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/Andree%20Right%20Hand%20-%20Ch%C6%A1i%20Nh%C6%B0%20T%E1%BB%A5i%20M%E1%BB%B9%20-%20Official%20MV.mp3",
+    "genre": "Hip-Hop / Rap",
+    "release_year": 2022,
+    "country": "Việt Nam"
+  },
+  {
+    "name": "Bánh Mì Không",
+    "artist": "ĐạtG x DuUyên",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/B%C3%A1nh%20M%C3%AC%20Kh%C3%B4ng%20-%20%C4%90%E1%BA%A1tG%20x%20DuUy%C3%AAn%20--%20OFFICIAL%20MV.mp3",
+    "genre": "V-Pop / R&B",
+    "release_year": 2019,
+    "country": "Việt Nam"
+  },
+  {
+    "name": "Make Me Move (feat. Karra)",
+    "artist": "Culture Code",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/Culture%20Code%20-%20Make%20Me%20Move%20(feat.%20Karra)%20%20Dance%20Pop%20%20NCS%20-%20Copyright%20Free%20Music.mp3",
+    "genre": "Dance-Pop / Melodic Dubstep",
+    "release_year": 2016,
+    "country": "Anh"
+  },
+  {
+    "name": "Energy",
+    "artist": "Elektronomia",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/Elektronomia%20-%20Energy%20%20Progressive%20House%20%20NCS%20-%20Copyright%20Free%20Music.mp3",
+    "genre": "Progressive House / Electro House",
+    "release_year": 2016,
+    "country": "Phần Lan"
+  },
+  {
+    "name": "Hai Thế Giới",
+    "artist": "Wowy & Karik",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/Hai%20Th%E1%BA%BF%20Gi%E1%BB%9Bi%20full%20-%20Wowy%20%26%20Karik%20(%20Official%20Video%20HD%20full%20).mp3",
+    "genre": "Hip-Hop / Rap",
+    "release_year": 2012,
+    "country": "Việt Nam"
+  },
+  {
+    "name": "Hành Lang Cũ (Hạ Nhớ)",
+    "artist": "Long Nón Lá x Masew",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/H%C3%A0nh%20Lang%20C%C5%A9%20(H%E1%BA%A1%20Nh%E1%BB%9B)%20-%20Long%20N%C3%B3n%20L%C3%A1%20x%20Masew.mp3",
+    "genre": "V-Pop / EDM Folk",
+    "release_year": 2020,
+    "country": "Việt Nam"
+  },
+  {
+    "name": "Heroes Tonight (feat. Johnning)",
+    "artist": "Janji",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/Janji%20-%20Heroes%20Tonight%20(feat.%20Johnning)%20%20Progressive%20House%20%20NCS%20-%20Copyright%20Free%20Music.mp3",
+    "genre": "Progressive House",
+    "release_year": 2015,
+    "country": "Phần Lan"
+  },
+  {
+    "name": "Link",
+    "artist": "Jim Yosef",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/Jim%20Yosef%20-%20Link%20%20House%20%20NCS%20-%20Copyright%20Free%20Music.mp3",
+    "genre": "House / Electro House",
+    "release_year": 2017,
+    "country": "Thụy Điển"
+  },
+  {
+    "name": "Somewhere Only We Know",
+    "artist": "Keane",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/Keane_-_Somewhere_only_we_know_(mp3.pm).mp3",
+    "genre": "Alternative Rock / Piano Rock",
+    "release_year": 2004,
+    "country": "Anh"
+  },
+  {
+    "name": "Khu Tao Sống",
+    "artist": "Wowy Karik",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/Khu%20Tao%20Song%20-%20Wowy%20Karik%20(OFFICIAL%20VIDEO%20HD).mp3",
+    "genre": "Hip-Hop / Rap",
+    "release_year": 2010,
+    "country": "Việt Nam"
+  },
+  {
+    "name": "Nuts",
+    "artist": "Lil Peep",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/Lil%20Peep%20-%20nuts%20(1).mp3",
+    "genre": "Emo Rap / Cloud Rap",
+    "release_year": 2015,
+    "country": "Mỹ"
+  },
+  {
+    "name": "Đầu Đường Xó Chợ",
+    "artist": "Obito ft. Lăng LD",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/Obito%20-%20%C4%90%E1%BA%A7u%20%C4%90%C6%B0%E1%BB%9Dng%20X%C3%B3%20Ch%E1%BB%A3%20ft.%20L%C4%83ng%20LD.mp3",
+    "genre": "Hip-Hop / Rap",
+    "release_year": 2023,
+    "country": "Việt Nam"
+  },
+  {
+    "name": "Feel Good",
+    "artist": "Syn Cole",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/Syn%20Cole%20-%20Feel%20Good%20%20Future%20House%20%20NCS%20-%20Copyright%20Free%20Music.mp3",
+    "genre": "Future House / EDM",
+    "release_year": 2016,
+    "country": "Estonia"
+  },
+  {
+    "name": "Close To The Sun",
+    "artist": "TheFatRat & Anjulie",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/TheFatRat%20%26%20Anjulie%20-%20Close%20To%20The%20Sun.mp3",
+    "genre": "Dance / Electronic",
+    "release_year": 2019,
+    "country": "Đức"
+  },
+  {
+    "name": "Fly Away (feat. Anjulie)",
+    "artist": "TheFatRat",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/TheFatRat%20-%20Fly%20Away%20feat.%20Anjulie.mp3",
+    "genre": "Electro Pop / Dance",
+    "release_year": 2017,
+    "country": "Đức"
+  },
+  {
+    "name": "Monody (feat. Laura Brehm)",
+    "artist": "TheFatRat",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/TheFatRat%20-%20Monody%20(feat.%20Laura%20Brehm).mp3",
+    "genre": "Glitch Hop / EDM",
+    "release_year": 2015,
+    "country": "Đức"
+  },
+  {
+    "name": "Unity",
+    "artist": "TheFatRat",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/TheFatRat%20-%20Unity.mp3",
+    "genre": "Glitch Hop / EDM",
+    "release_year": 2014,
+    "country": "Đức"
+  },
+  {
+    "name": "Thủ Đô Cypher",
+    "artist": "Beck'Stage X Biti's Hunter (RPT Orijinn, LOW G, RZMas, RPT MCK)",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/Th%E1%BB%A7%20%C4%90%C3%B4%20Cypher%20-%20Beck'Stage%20X%20Biti's%20Hunter%20(%20RPT%20Orijinn%2C%20LOW%20G%2C%20RZMas%2C%20RPT%20MCK).mp3",
+    "genre": "Hip-Hop / Rap",
+    "release_year": 2020,
+    "country": "Việt Nam"
+  },
+  {
+    "name": "Yêu Làm Chi (#YLC)",
+    "artist": "Fay x CM1X x Insolent",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/Y%C3%AAu%20L%C3%A0m%20Chi%20(%23YLC)%20-%20Fay%20x%20CM1X%20x%20Insolent.mp3",
+    "genre": "V-Pop / House",
+    "release_year": 2020,
+    "country": "Việt Nam"
+  },
+  {
+    "name": "Let You Never",
+    "artist": "gabriawll",
+    "download_url": "https://github.com/ugmoddev/music-1/raw/main/gabriawll%20-%20Let%20You%20Never%20%20House%20%20NCS%20-%20Copyright%20Free%20Music.mp3",
+    "genre": "House / EDM",
+    "release_year": 2023,
+    "country": "Quốc tế"
+  }
+]
