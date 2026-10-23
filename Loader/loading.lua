@@ -18,10 +18,10 @@ local API_URL = "https://api.xngotrouter.indevs.in"
 local Request = request or http_request or (syn and syn.request) or (http and http.request)
 
 local SCRIPT_GROUPS = {
-    -- {
-    --     PlaceIds = {1111111111, 2222222222, 3333333333},
-    --     ScriptUrl = "https://your-domain.com/scripts/game-1.lua"
-    -- },
+     {
+         PlaceIds = {107778070777162},
+         ScriptUrl = "https://raw.githubusercontent.com/xngotzume123/xNgotHub/refs/heads/main/Game/StealAnEgg.lua"
+     }
     -- {
     --     PlaceIds = {4444444444, 5555555555},
     --     ScriptUrl = "https://your-domain.com/scripts/game-2.lua"
