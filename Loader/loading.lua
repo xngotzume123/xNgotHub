@@ -7,6 +7,7 @@ end
 
 local API_URL = "https://api.xngotrouter.indevs.in"
 local Request = request or http_request or (syn and syn.request) or (http and http.request)
+local FINGERPRINT = HttpService:GenerateGUID(false)
 
 local SCRIPT_GROUPS = {
     {
@@ -58,11 +59,31 @@ local function decode(body)
     return ok and type(data) == "table" and data or nil
 end
 
+local function sendWithHandshake(sender, options)
+    local handshake = sender({
+        Url = API_URL .. "/api/handshake",
+        Method = "POST",
+        Headers = { ["x-xngot-fingerprint"] = FINGERPRINT }
+    })
+    if type(handshake) ~= "table" or tonumber(handshake.StatusCode or handshake.Status) ~= 200 then
+        error("Could not establish handshake")
+    end
+    local data = decode(handshake.Body)
+    if not data or type(data.token) ~= "string" then
+        error("Invalid handshake response")
+    end
+    options.Headers = options.Headers or {}
+    options.Headers["x-xngot-fingerprint"] = FINGERPRINT
+    options.Headers["x-xngot-handshake"] = data.token
+    options.Headers["x-xngot-request-id"] = HttpService:GenerateGUID(false):lower()
+    return sender(options)
+end
+
 local function readKeylessMode()
     if type(Request) ~= "function" then
         error("Executor does not support HTTP requests")
     end
-    local ok, response = pcall(Request, {
+    local ok, response = pcall(sendWithHandshake, Request, {
         Url = API_URL .. "/api/public",
         Method = "GET",
         Headers = { ["Accept"] = "application/json" }
@@ -99,7 +120,7 @@ local function post(path, payload, client)
         return nil, nil, "Executor does not support HTTP requests"
     end
 
-    local ok, response = pcall(sender, {
+    local ok, response = pcall(sendWithHandshake, sender, {
         Url = API_URL .. path,
         Method = "POST",
         Headers = {
