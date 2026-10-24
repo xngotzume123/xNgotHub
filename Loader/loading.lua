@@ -5,24 +5,6 @@ if not game:IsLoaded() then
     game.Loaded:Wait()
 end
 
-local Environment = type(getgenv) == "function" and getgenv() or _G
-local DEFAULT_KEYLESS = true
-
-local setting = Environment.keyless
-if type(setting) ~= "boolean" then
-    setting = Environment.Keyless
-end
-
-local KEYLESS
-if type(setting) == "boolean" then
-    KEYLESS = setting
-else
-    KEYLESS = DEFAULT_KEYLESS
-end
-
-Environment.keyless = KEYLESS
-Environment.Keyless = KEYLESS
-
 local API_URL = "https://api.xngotrouter.indevs.in"
 local Request = request or http_request or (syn and syn.request) or (http and http.request)
 
@@ -37,7 +19,6 @@ local ROUTE_BY_PLACE_ID = {}
 for _, group in ipairs(SCRIPT_GROUPS) do
     assert(type(group.PlaceIds) == "table" and #group.PlaceIds > 0, "Missing PlaceIds")
     assert(group.ScriptUrl == nil or (type(group.ScriptUrl) == "string" and group.ScriptUrl:match("^https://")), "Invalid ScriptUrl")
-
     for _, placeId in ipairs(group.PlaceIds) do
         assert(type(placeId) == "number" and placeId > 0, "Invalid PlaceId")
         assert(not ROUTE_BY_PLACE_ID[placeId], "Duplicate PlaceId: " .. tostring(placeId))
@@ -76,6 +57,30 @@ local function decode(body)
     local ok, data = pcall(HttpService.JSONDecode, HttpService, body)
     return ok and type(data) == "table" and data or nil
 end
+
+local function readKeylessMode()
+    if type(Request) ~= "function" then
+        error("Executor does not support HTTP requests")
+    end
+    local ok, response = pcall(Request, {
+        Url = API_URL .. "/api/public",
+        Method = "GET",
+        Headers = { ["Accept"] = "application/json" }
+    })
+    if not ok or type(response) ~= "table" then
+        error("Could not read Keyless mode from the server: " .. tostring(response))
+    end
+    if tonumber(response.StatusCode or response.Status) ~= 200 then
+        error("Could not read Keyless mode: HTTP " .. tostring(response.StatusCode or response.Status))
+    end
+    local data = decode(response.Body)
+    if not data or type(data.settings) ~= "table" or type(data.settings.keyless_enabled) ~= "boolean" then
+        error("The server returned an invalid Keyless setting")
+    end
+    return data.settings.keyless_enabled
+end
+
+local KEYLESS = readKeylessMode()
 
 local function getError(body, fallback)
     local data = decode(body)
@@ -194,73 +199,45 @@ local function startHeartbeat(payload)
 end
 
 local function executeScript(key)
+    local hwid, hwidError = getHWID()
+    if not hwid then
+        error(hwidError)
+    end
+
     local player = Players.LocalPlayer
     local payload = {
+        hwid = hwid,
         roblox_user_id = player and player.UserId or nil,
         place_id = placeId
     }
-
     if not KEYLESS then
-        local hwid, hwidError = getHWID()
-        if not hwid then
-            error(hwidError)
-        end
         payload.key = key
-        payload.hwid = hwid
+    end
+    local status, body, requestError = post("/api/v1/script", payload)
+    if not status then
+        error(requestError)
+    end
+    if status ~= 200 then
+        error(getError(body, "Failed to load script"))
     end
 
-    local data
-    local body
-    if not KEYLESS or not currentGroup.ScriptUrl then
-        if KEYLESS then
-            payload.keyless = true
-        end
-
-        local status, responseBody, requestError = post("/api/v1/script", payload)
-        if not status then
-            error(requestError)
-        end
-        if status ~= 200 then
-            if KEYLESS then
-                error("Keyless requires a ScriptUrl or server-side keyless support: " .. getError(responseBody, tostring(status)))
-            end
-            error(getError(responseBody, "This game or key is not authorized"))
-        end
-
-        body = responseBody
-        data = decode(body)
-    end
-
-    local scriptUrl = currentGroup.ScriptUrl
-    if not scriptUrl and data then
-        scriptUrl = data.script_url or data.loader_url
-    end
-
-    local source
-    if scriptUrl then
-        if type(scriptUrl) ~= "string" or not scriptUrl:match("^https://") then
-            error("Invalid script URL")
-        end
-        local ok, downloaded = pcall(game.HttpGet, game, scriptUrl)
+    local source = body
+    if currentGroup.ScriptUrl then
+        local ok, downloaded = pcall(game.HttpGet, game, currentGroup.ScriptUrl)
         if not ok or type(downloaded) ~= "string" or downloaded == "" then
             error("Failed to download game script: " .. tostring(downloaded))
         end
         source = downloaded
-    else
-        source = data and (data.code or data.script or data.lua) or body
-        if type(source) ~= "string" or source == "" then
-            error("Server returned neither script content nor a script_url")
-        end
     end
-
+    if type(source) ~= "string" or source == "" then
+        error("Server returned an empty script")
+    end
     local scriptFunction, compileError = loadstring(source)
     if not scriptFunction then
         error("Game script compilation failed: " .. tostring(compileError))
     end
 
-    if not KEYLESS then
-        startHeartbeat(payload)
-    end
+    startHeartbeat(payload)
     local ok, runError = pcall(scriptFunction)
     if not ok then
         heartbeatGeneration = heartbeatGeneration + 1
@@ -277,7 +254,6 @@ if KEYLESS then
 end
 
 local Ophyn = loadstring(game:HttpGet("https://ophyn.space/interface"))()
-
 Ophyn.new({
     Title = "xNgot Hub",
     Description = "Secure Key System",
